@@ -1,0 +1,207 @@
+
+./Fresh.hs,0
+
+./Generalization.hs,687
+module GeneralizationGeneralization3,4
+data State State59,60
+data State s = State State59,60
+  pool pool60,61
+  young young61,62
+  fresh fresh62,63
+data Scheme Scheme65,66
+data Scheme s = Scheme Scheme65,66
+  quantifiers quantifiers66,67
+  body body67,68
+generic, no_rank no_rank70,71
+generic,generic70,71
+generic generic71,72
+no_rank no_rank72,73
+base_rank base_rank73,74
+initialize initialize75,76
+initialize initialize76,77
+trivial trivial82,83
+register_at_rank register_at_rank84,85
+register register92,93
+enter enter97,98
+make_scheme make_scheme103,104
+make_scheme make_scheme105,106
+exit exit124,125
+instantiate instantiate126,127
+
+./InfiniteArray.hs,254
+data InfiniteArray InfiniteArray11,12
+data InfiniteArray a = InfiniteArray InfiniteArray11,12
+  def def12,13
+  table table13,14
+make make16,17
+new_length new_length21,22
+ensure ensure26,27
+ensure ensure27,28
+get get37,38
+set set42,43
+
+./TRef.hs,430
+type TransM TransM23,24
+type TransM a a23,24
+data TRef TRef25,26
+data TRef a = TRef TRef25,26
+  current current27,28
+  committed committed28,29
+newTRefIO newTRefIO34,35
+newTRefIO newTRefIO35,36
+readTRefIO readTRefIO40,41
+readTRefIO readTRefIO41,42
+writeTRef writeTRef43,44
+writeTRef writeTRef44,45
+commit commit54,55
+rollback rollback58,59
+tentatively tentatively62,63
+tentatively tentatively63,64
+
+./TRefMap.hs,130
+type TRefMap TRefMap22,23
+type TRefMap a a22,23
+new new24,25
+lookup lookup28,29
+member member32,33
+insert insert35,36
+
+./TUnionFind/IO.hs,645
+module TUnionFind.IO TUnionFind.IO4,5
+newtype Point Point42,43
+     Point Point43,44
+     Point { unPoint unPoint43,44
+data Link Link46,47
+     Info Info47,48
+     Info { weight weight47,48
+     Info { weight :: {-# UNPACK #-} !Int, descriptor descriptor47,48
+   | Link Link48,49
+showIO showIO53,54
+instance instance59,60
+readPoint readPoint62,63
+writePoint writePoint63,64
+fresh fresh68,69
+fresh fresh69,70
+repr repr78,79
+repr repr79,80
+find find88,89
+find find89,90
+reprT reprT106,107
+reprT reprT107,108
+union union135,136
+equivalent equivalent150,151
+is_representative is_representative152,153
+
+./TUnionFind.hs,639
+module TUnionFind TUnionFind8,9
+newtype Point Point46,47
+     Point Point47,48
+     Point { unPoint unPoint47,48
+data Link Link50,51
+     Info Info51,52
+     Info { weight weight51,52
+     Info { weight :: {-# UNPACK #-} !Int, descriptor descriptor51,52
+   | Link Link52,53
+showIO showIO57,58
+instance instance63,64
+readPoint readPoint66,67
+writePoint writePoint67,68
+fresh fresh72,73
+fresh fresh73,74
+repr repr82,83
+repr repr83,84
+find find92,93
+find find93,94
+reprT reprT109,110
+reprT reprT110,111
+union union138,139
+equivalent equivalent153,154
+is_representative is_representative155,156
+
+./TypeInf.hs,531
+module TypeInf TypeInf0,1
+type Var Var11,12
+data Type Type13,14
+data Type = IntTyIntTy13,14
+     | BoolTyBoolTy14,15
+     | FunTy FunTy15,16
+     | VarTy VarTy16,17
+type TermVar TermVar19,20
+data Bop Bop21,22
+data Bop = Plus Plus21,22
+data Bop = Plus | Times Times21,22
+data Bop = Plus | Times | Minus Minus21,22
+data Expression Expression23,24
+   Var Var24,25
+ | IntExp IntExp25,26
+ | BoolExp BoolExp26,27
+ | Op Op27,28
+ | If If28,29
+ | Fun Fun29,30
+ | App App30,31
+ | LetRec LetRec31,32
+
+./Unifier.hs,992
+module Unifier Unifier4,5
+data ZipError ZipError26,27
+data ZipError a = ZipError ZipError26,27
+class (Typeable s, Foldable s) => ZipM ZipM30,31
+type Variable Variable67,68
+type Variable s s67,68
+data Descriptor Descriptor79,80
+data Descriptor s = DescriptorDescriptor79,80
+  { descId descId80,81
+    descStruc descStruc81,82
+    descRank descRank82,83
+instance instance84,85
+data Err Err87,88
+data Err s = Unify Unify87,88
+           | Cycle Cycle88,89
+id id93,94
+structure structure95,96
+set_structure set_structure99,100
+rank rank103,104
+set_rank set_rank107,108
+adjust_rank adjust_rank111,112
+postincrement postincrement118,119
+makeFresh makeFresh125,126
+unify_internal unify_internal139,140
+unify_descriptors unify_descriptors143,144
+unify_structures unify_structures163,164
+unify unify172,173
+unify unify173,174
+equivalent equivalent181,182
+is_representative is_representative184,185
+new_occurs_check new_occurs_check198,199
+
+./UnionFind.hs,540
+module UnionFind UnionFind0,1
+newtype Point Point35,36
+newtype Point a = Point Point35,36
+newtype Point a = Point { unPoint unPoint35,36
+readPoint readPoint37,38
+writePoint writePoint38,39
+data Link Link40,41
+     Info Info41,42
+     Info { weight weight41,42
+     Info { weight :: Int, descriptor descriptor41,42
+   | Link Link42,43
+fresh fresh47,48
+repr repr56,57
+repr repr57,58
+find find72,73
+find find73,74
+union union103,104
+equivalent equivalent121,122
+is_representative is_representative126,127
+
+./WriteOnce.hs,190
+module WriteOnce WriteOnce0,1
+newtype WORef WORef4,5
+newtype WORef a = WORef WORef4,5
+create create6,7
+create create7,8
+set set11,12
+set set12,13
+get get18,19
+get get19,20
