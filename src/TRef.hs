@@ -1,9 +1,19 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeFamilies #-}
 
-module TRef where
+module TRef (TRef,
+             newTRef,
+             readTRef,
+             TransM,
+             writeTRef,
+             tentatively) where
 
-import Data.IORef
+
 import Control.Monad.Catch
 import Control.Monad.Reader
 
@@ -11,6 +21,10 @@ import Data.Maybe
 import Control.Applicative
 
 import Data.Typeable
+
+-- this file requires our extended version of this module
+-- not the one on hackage
+import Control.Monad.Ref
 
 
 
@@ -23,53 +37,62 @@ Every cell records both its current (possibly uncommitted) value
    these two values are (physically) equal, and unstable otherwise.
 -}
 
-type TransM a = ReaderT (IORef [TRef a]) IO
+type TransM a m = ReaderT (Ref m [TRef m a]) m 
 
-data TRef a = TRef {
-  current   :: IORef a,
-  committed :: IORef a
-} deriving (Eq)
+data TRef m a = TRef {
+  current   :: Ref m a,
+  committed :: Ref m a
+} 
 
+instance (MonadRef m) => Eq (TRef m a) where
+  tr1 == tr2 = eqRef' (current tr1) (current tr2) &&
+               eqRef' (committed tr1) (committed tr2) where
+     eqRef' = eqRef (Proxy :: Proxy m)
+               
 
+ 
 -- TRefs are not created after the beginning of a transaction 
 
-newTRefIO ::  a -> IO (TRef a)
-newTRefIO v = do
-  cur <- newIORef v
-  com <- newIORef v
+-- newTRef :: MonadRef r m  => a -> m (TRef r a)
+newTRef v = do
+  cur <- newRef v
+  com <- newRef v
   return $ TRef cur com
 
-readTRefIO :: TRef a -> IO a 
-readTRefIO cell = readIORef (current cell)
+readTRef :: MonadRef m => TRef m a -> m a 
+readTRef cell = readRef (current cell)
 
-writeTRef :: Eq a => TRef a -> a -> TransM a ()
+writeTRef :: (MonadRef m, Eq a) =>  TRef m a -> a -> TransM a m ()
 writeTRef cell v = do
-  cur <- liftIO $ readIORef (current cell)
+  cur <- readRef (current cell)
   unless (v == cur) $ do
-    com <- liftIO $ readIORef (committed cell)
+    com <- readRef (committed cell)
     when (cur == com) $ do
       stack <- ask
-      transactions <- liftIO $ readIORef stack
-      liftIO $ writeIORef stack (cell : transactions)
-    liftIO $ writeIORef (current cell) v
+      transactions <- readRef stack
+      writeRef stack (cell : transactions)
+    writeRef (current cell) v
 
+commit :: (MonadRef m) => TRef m a -> m ()
 commit cell = do
-  cur <- readIORef (current cell)
-  writeIORef (committed cell) cur
+  cur <- readRef (current cell)
+  writeRef (committed cell) cur
 
+rollback :: (MonadRef m) => TRef m a -> m ()
 rollback cell = do
-  com <- readIORef (committed cell)
-  writeIORef (current cell) com
+  com <- readRef (committed cell)
+  writeRef (current cell) com
     
-tentatively :: forall a b e. (Eq a, Exception e) => Proxy e -> TransM a b -> IO b
+tentatively :: forall a b e m r . (MonadCatch m, MonadRef m, Eq a, Exception e)
+               => Proxy e -> TransM a m b -> m b
 tentatively _ f = do
-  stack <- newIORef []
+  stack <- newRef []
   (do result <- runReaderT f stack
-      transactions <- readIORef stack
+      transactions <- readRef stack
       forM_ transactions commit
       return result)
     `catch` \(e :: e) -> do
-      transactions <- readIORef stack
+      transactions <- readRef stack
       forM_ transactions rollback
       throwM e
     

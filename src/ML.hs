@@ -5,7 +5,11 @@ import Data.Typeable
 import SolverHi (TermVar)
 
 data Tm = Var TermVar
-        | Abs Tm Tm
+        | Abs TermVar Tm
         | App Tm Tm
         | Let TermVar Tm Tm
-       deriving(Typeable, Show)
+        | Pair Tm Tm
+        | Proj Int Tm
+        | Bool Bool
+        | If Tm Tm Tm
+       deriving (Typeable, Show)

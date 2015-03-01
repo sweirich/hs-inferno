@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE RankNTypes, ScopedTypeVariables #-}
 {-# OPTIONS_GHC -fdefer-type-errors #-}
@@ -10,7 +11,8 @@ import Control.Applicative
 import Control.Monad.Reader
 import Control.Monad.Catch
 
-import Contro.Monad.Ref
+import Data.Array.MArray
+import Control.Monad.Ref
 -- import Data.IORef
 
 import Data.Typeable
@@ -26,54 +28,58 @@ import qualified Data.Map as Map
 type TermVar = String
 
 -- type schemes
-type Scheme s = G.Scheme s
+type Scheme m s = G.Scheme m s
 
 -- type variables
-type Var s = U.Variable s
+type Var m s = U.Variable m s
  
 
-data RawCo s =
+data RawCo m s =
     CTrue
-  | CConj (RawCo s) (RawCo s)
-  | CEq (Var s) (Var s)
-  | CExist (Var s) (RawCo s)
-  | CInstance TermVar (Var s) (IORef [Var s])
-  | CDef TermVar (Var s) (RawCo s)
-  | CLet (IORef [Var s])
-         (RawCo s)
-         [(TermVar, Var s, IORef (Scheme s))]
-         (RawCo s)
+  | CConj (RawCo m s) (RawCo m s)
+  | CEq (Var m s) (Var m s)
+  | CExist (Var m s) (RawCo m s)
+  | CInstance TermVar (Var m s) (Ref m [Var m s])
+  | CDef TermVar (Var m s) (RawCo m s)
+  | CLet (Ref m (Maybe [Var m s]))
+         (RawCo m s)
+         [(TermVar, Var m s, Ref m (Maybe (Scheme m s)))]
+         (RawCo m s)
          
 
-data Err s =
+data Err m s =
     Unbound TermVar
-  | Unify (Var s) (Var s)
-  | Cycle (Var s)
+  | Unify (Var m s) (Var m s)
+  | Cycle (Var m s)
     deriving (Typeable, Show)
 
-instance (Typeable s) => Exception (Err s)
+instance (Typeable m, Typeable s) => Exception (Err m s)
 
-type Environment s = Map TermVar (Scheme s)
+type Environment m s = Map TermVar (Scheme m s)
 
-env_lookup :: TermVar -> SolverM s (Maybe (Scheme s))
+env_lookup :: (Monad m) => TermVar -> SolverT s m (Maybe (Scheme m s))
 env_lookup x = do
   env <- ask  
   return $ Map.lookup x env
 
-env_extend :: TermVar -> Scheme s -> SolverM s a -> SolverM s a
+env_extend :: (Monad m) => TermVar -> Scheme m s -> SolverT s m a -> SolverT s m a
 env_extend x s = local (Map.insert x s)
   
-type SolverM s = ReaderT (Environment s) IO
+type SolverT s m = ReaderT (Environment m s) m
 
-makeFresh = do
-  f <- U.makeFresh
-  return $ \t -> f t G.no_rank
+makeFresh t = do
+  U.makeFresh t G.no_rank
 
-solve :: forall s. (ZipM s, Typeable s) => (G.Fresher s) -> Bool -> RawCo s -> IO ()
-solve fr rectypes c = do
-  state <- G.initialize fr
-
-  let solve_internal :: RawCo s -> Environment s -> IO ()
+solve :: forall m s ra.
+         (ZipM s, Typeable s, MonadFresh m, MonadRef m,
+          MonadCatch m, Typeable m,
+          MArray ra [U.Variable m s] m) =>
+         Proxy ra -> Bool -> RawCo m s -> m ()
+solve p rectypes c = do
+  state <- G.initialize 
+  let state' :: G.State m ra s
+      state' = state
+  let solve_internal :: RawCo m s -> Environment m s -> m ()
       solve_internal c env =
         case c of
          CTrue       -> return ()
@@ -84,10 +90,10 @@ solve fr rectypes c = do
            solve_internal c env
          CInstance x w witness_hook -> do
            case (Map.lookup x env) of
-            Nothing -> throwM $ (Unbound x :: Err s)
+            Nothing -> throwM $ (Unbound x :: Err m s)
             Just s  -> do
               (witnesses, v) <- G.instantiate state s
-              writeIORef witness_hook witnesses
+              writeRef witness_hook witnesses
               U.unify v w
          CDef x v c ->
            solve_internal c (Map.insert x (G.trivial v) env)
@@ -98,18 +104,28 @@ solve fr rectypes c = do
            solve_internal c1 env
            (generalizable, ss) <- G.exit rectypes state vs
            env' <- foldM (\ env ((x,_,scheme_hook), s)  -> do
-                                          writeIORef scheme_hook s
+                                          writeRef scheme_hook (Just s)
                                           return $ Map.insert x s env) env (zip xvss ss) 
-           writeIORef generalizable_hook generalizable
+           writeRef generalizable_hook (Just generalizable)
            solve_internal c2 env'
   solve_internal c Map.empty
 
 ----------------------------------------------------------------------
 
-    
-type Decoder t = Var (Src t) -> IO t
+-- Decoding types
 
-new_decoder :: Output t => IO (Decoder t)                 
-new_decoder =
-  U.new_acyclic_decoder
+-- decode_variable :: Var m (Src t) -> m Int
+decode_variable x = U.desc_id x
 
+decode_variable_as_type x =
+  liftM tovar (decode_variable x)
+                    
+type Decoder m t = Var m (Src t) -> m t
+
+new_decoder :: (MonadRef m, Output t) => m (Decoder m t)                 
+new_decoder = U.new_acyclic_decoder
+
+decode_scheme decode s = do
+  vs <- mapM decode_variable (G.quantifiers s)
+  b  <- decode (G.body s)
+  return (vs, b)

@@ -1,8 +1,10 @@
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# OPTIONS_GHC -fdefer-type-errors #-}
 
 module Unifier where
@@ -20,8 +22,8 @@ import qualified Data.Traversable as T
 
 import Data.Typeable
 import Control.Monad.Catch
-
-import Data.IORef
+import Control.Monad.Ref
+-- import Data.IORef
 
 import UnifierSig
 
@@ -39,10 +41,11 @@ import qualified TUnionFind as UF
    We also keep an identifier with it for hashing.
 -}
 
-data Variable s = Variable
-                  { getPoint :: UF.Point (Descriptor s),
+data Variable m s = Variable
+                  { getPoint :: UF.Point m (Descriptor m s),
                     getId    :: Int }
-  deriving (Show, Eq, Typeable)
+  deriving (Typeable)
+
 
 
 {- Every equivalence class carries a descriptor which contains
@@ -55,61 +58,72 @@ data Variable s = Variable
    rolled back if unification fails.
 -}
 
-data Descriptor s = Descriptor {
+data Descriptor m s = Descriptor {
     descId    :: Int,
-    descStruc :: IORef (Maybe (s (Variable s))),
-    descRank  :: IORef Int
-  } deriving (Eq, Typeable)
+    descStruc :: (Ref m) (Maybe (s (Variable m s))),
+    descRank  :: (Ref m) Int
+  } deriving (Typeable)
 
-instance Show (Descriptor s) where
-  show d = show (descId d)
+instance Eq (Variable m s) where
+  v1 == v2 = (getId v1) == (getId v2)
+instance Eq (Descriptor m s) where
+  d1 == d2 = (descId d1) == (descId d2)
 
-data Err s = Unify (Variable s) (Variable s)
-           | Cycle (Variable s)
+instance Show (Variable r s) where
+  show x = "V:" ++ (show (getId x))
+instance Show (Descriptor r s) where
+  show d = "D:" ++  (show (descId d))
+
+data Err r s = Unify (Variable r s) (Variable r s)
+             | Cycle (Variable r s)
    deriving (Typeable, Show)
-instance Typeable s => Exception (Err s)
+            
+instance (Typeable s, Typeable r) => Exception (Err r s)
 
 -- accessors
-desc_id v = descId <$> UF.find (getPoint v)
+desc_id v = liftM descId $ UF.find (getPoint v)
 
 structure v = do
-  s <- descStruc <$> UF.find (getPoint v)
-  readIORef s 
+  s <- liftM descStruc $ UF.find (getPoint v)
+  readRef s 
 
 set_structure v x = do
-  s <- descStruc <$> UF.find (getPoint v)
-  writeIORef s x
+  s <- liftM descStruc $ UF.find (getPoint v)
+  writeRef s x
 
 rank v = do
-   r <- descRank <$> UF.find (getPoint v)
-   readIORef r
+   r <- liftM descRank $ UF.find (getPoint v)
+   readRef r
 
 set_rank v x = do
-  r <- descRank <$> UF.find (getPoint v)
-  writeIORef r x
+  r <- liftM descRank $ UF.find (getPoint v)
+  writeRef r x
 
 adjust_rank v k = do
-  r <- descRank <$> UF.find (getPoint v)
-  rank <- readIORef r
-  when (k < rank) (writeIORef r k)
+  r <- liftM descRank $ UF.find (getPoint v)
+  rank <- readRef r
+  when (k < rank) (writeRef r k)
 
 {- ----------------------------------------------------------------- -}
 
+{-
 postincrement r = do
   v <- readIORef r
   writeIORef r (v + 1)
   return v
+-}
 
 {- ----------------------------------------------------------------- -}
 
 
-makeFresh :: MonadFresh m => s (Variable s) -> Int -> m (Variable s)
-makeFresh structure rank = do
+makeFresh :: (MonadRef m, MonadFresh m) =>
+             Maybe (s (Variable m s)) -> Int -> m (Variable m s)
+makeFresh ms rank = do
      id  <- fresh
-     str <- newIORef structure
-     rnk <- newIORef rank
+     str <- newRef ms
+     rnk <- newRef rank
      point <- UF.fresh $ Descriptor id str rnk
-     return $ Variable id point
+     return $ Variable point id
 
 
 {- The internal function [unify t v1 v2] equates the variables [v1] and
@@ -120,27 +134,21 @@ makeFresh structure rank = do
 unify_internal v1 v2 =
   UF.union unify_descriptors (getPoint v1) (getPoint v2)
 
--- unify_descriptors :: Descriptor s -> Descriptor s -> TransM (UF.Link Descriptor) Descriptor
+
 unify_descriptors desc1 desc2 = do
-  s1 <- liftIO $ readIORef (descStruc desc1)
-  s2 <- liftIO $ readIORef (descStruc desc2)
+  s1 <- readRef (descStruc desc1)
+  s2 <- readRef (descStruc desc2)
   struc <- unify_structures s1 s2
-  liftIO $ do new_struc <- newIORef struc
-              r1 <- readIORef (descRank desc1)
-              r2 <- readIORef (descRank desc2)
-              new_rank <- newIORef (min r1 r2)
-              return $
+  new_struc <- newRef struc
+  r1 <- readRef (descRank desc1)
+  r2 <- readRef (descRank desc2)
+  new_rank <- newRef (min r1 r2)
+  return $
                 Descriptor
                 (descId desc1)
                 new_struc
                 new_rank
 
-{-
-unify_structures :: (Maybe (Structure Variable))
-                    -> Maybe (Structure Variable)
-                    -> TransM (UF.Link Descriptor)
-                              (Maybe (Structure Variable))
--}
 unify_structures structure1 structure2 =
   case (structure1, structure2) of
     (Just s1, Just s2) -> do _ <- zipM unify_internal s1 s2
@@ -150,19 +158,24 @@ unify_structures structure1 structure2 =
     (Nothing, Nothing) -> return Nothing
 
 
-unify :: forall s. ZipM s => Variable s -> Variable s -> IO ()
+unify :: forall r m s. (Typeable m, MonadRef m, MonadCatch m, ZipM s)
+         => Variable m s -> Variable m s -> m ()
 unify v1 v2 = do
-  tentatively (Proxy :: Proxy (Err s))
+  tentatively (Proxy :: Proxy (Err m s))
     (unify_internal v1 v2)
-    `catch` (\(e :: Err s) ->
+    `catch` (\(e :: Err m s) ->
               throwM (Unify v1 v2))
   
     
--- equivalent :: Variable -> Variable -> M Bool
-equivalent = UF.equivalent
 
--- is_representative :: Variable -> M Bool
-is_representative = UF.is_representative
+equivalent
+  :: (MonadRef m) => Variable m a -> Variable m a -> m Bool
+equivalent v1 v2 = if (getId v1) == (getId v2)
+                   then return True
+                   else UF.equivalent (getPoint v1) (getPoint v2)
+
+-- is_representative :: (MonadRef m) => Variable m s -> m Bool
+is_representative v = UF.is_representative (getPoint v)
 
  ----------------------------------------------------------------- 
 
@@ -177,8 +190,9 @@ is_representative = UF.is_representative
 new_occurs_check is_young v = do
   table <- TRefMap.new
   let -- traverse :: Variable s -> IO ()
-      traverse v = 
-        when (is_young v) $ do
+      traverse v = do
+        b <- is_young v
+        when b $ do
           mb <- TRefMap.lookup table v
           case mb of
             Just visited ->
@@ -203,11 +217,12 @@ new_occurs_check is_young v = do
 -- decoding  
 
 
-new_acyclic_decoder :: forall t. (Output t) => IO (Variable (Src t) -> IO t)
+new_acyclic_decoder :: forall t m.
+                       (MonadRef m, Output t) => m (Variable m (Src t) -> m t)
 new_acyclic_decoder = do
   table <- TRefMap.new
   
-  let decode :: Variable (Src t) -> IO t
+  let decode :: Variable m (Src t) -> m t
       decode v = do
         mv <- TRefMap.lookup table v
         case mv of
