@@ -7,7 +7,7 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# OPTIONS_GHC -fdefer-type-errors #-}
 
-module Unifier where
+module Language.Inferno.Unifier where
 
 
 import Control.Monad 
@@ -25,11 +25,11 @@ import Control.Monad.Catch
 import Control.Monad.Ref
 -- import Data.IORef
 
-import UnifierSig
+import Language.Inferno.UnifierSig
 
-import TRef
-import qualified TRefMap
-import qualified TUnionFind as UF
+import Language.Inferno.TRef
+import qualified Language.Inferno.TRefMap as TRefMap
+import qualified Language.Inferno.TUnionFind as UF
 
 
 ----------------------------------------------------------------
@@ -45,7 +45,6 @@ data Variable m s = Variable
                   { getPoint :: UF.Point m (Descriptor m s),
                     getId    :: Int }
   deriving (Typeable)
-
 
 
 {- Every equivalence class carries a descriptor which contains
@@ -64,10 +63,13 @@ data Descriptor m s = Descriptor {
     descRank  :: (Ref m) Int
   } deriving (Typeable)
 
+
 instance Eq (Variable m s) where
-  v1 == v2 = (getId v1) == (getId v2)
+  v1 == v2 = (getId v1) == (getId v2) 
+  
 instance Eq (Descriptor m s) where
   d1 == d2 = (descId d1) == (descId d2)
+
 
 instance Show (Variable r s) where
   show x = "V:" ++ (show (getId x))
@@ -104,16 +106,7 @@ adjust_rank v k = do
   rank <- readRef r
   when (k < rank) (writeRef r k)
 
-{- ----------------------------------------------------------------- -}
-
-{-
-postincrement r = do
-  v <- readIORef r
-  writeIORef r (v + 1)
-  return v
--}
-
-{- ----------------------------------------------------------------- -}
+-----------------------------------------------------------------
 
 
 makeFresh :: (MonadRef m, MonadFresh m) =>
@@ -188,7 +181,7 @@ is_representative v = UF.is_representative (getPoint v)
 
 -- new_occurs_check :: (Variable -> Bool) -> Variable -> M ()
 new_occurs_check is_young v = do
-  table <- TRefMap.new
+  table <- TRefMap.new equivalent
   let -- traverse :: Variable s -> IO ()
       traverse v = do
         b <- is_young v
@@ -220,7 +213,7 @@ new_occurs_check is_young v = do
 new_acyclic_decoder :: forall t m.
                        (MonadRef m, Output t) => m (Variable m (Src t) -> m t)
 new_acyclic_decoder = do
-  table <- TRefMap.new
+  table <- TRefMap.new equivalent
   
   let decode :: Variable m (Src t) -> m t
       decode v = do

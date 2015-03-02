@@ -1,7 +1,7 @@
 {-- This module implements infinite arrays, that is, arrays that grow
     transparently upon demand. -}
 
-module InfiniteArray where
+module Language.Inferno.InfiniteArray where
 
 
 -- import Data.Array.IO

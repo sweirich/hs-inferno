@@ -3,7 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# OPTIONS_GHC -fdefer-type-errors #-}
-module SolverHi where
+module Language.Inferno.SolverHi where
 
 -- import Data.IORef
 import Control.Monad
@@ -18,10 +18,10 @@ import Data.Array.MArray
 
 -- The Structure and Output classes
 import Data.Traversable (Traversable)
-import UnifierSig
+import Language.Inferno.UnifierSig
 
 -- We rely on the low-level solver interface
-import qualified SolverLo as Lo
+import qualified Language.Inferno.SolverLo as Lo
 
 type TermVar = Lo.TermVar
 type Var m s = Lo.Var m s

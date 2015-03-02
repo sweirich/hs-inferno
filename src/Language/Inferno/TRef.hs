@@ -6,7 +6,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module TRef (TRef,
+module Language.Inferno.TRef (TRef,
              newTRef,
              readTRef,
              TransM,

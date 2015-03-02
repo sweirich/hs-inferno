@@ -1,6 +1,6 @@
 module F where
 
-import SolverHi (TermVar)
+import Language.Inferno.SolverHi (TermVar)
 
 data Ty b a =
     TyVar a

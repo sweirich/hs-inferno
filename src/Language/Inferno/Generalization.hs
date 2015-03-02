@@ -2,18 +2,18 @@
 {-# LANGUAGE RankNTypes, ScopedTypeVariables #-}
 {-# OPTIONS_GHC -fdefer-type-errors #-}
 
-module Generalization
+module Language.Inferno.Generalization
        (Scheme, quantifiers, body,
         State, initialize, no_rank, register, trivial,
         enter, exit, instantiate)
        where
 
-import UnifierSig
-import qualified Unifier as U
+import Language.Inferno.UnifierSig
+import qualified Language.Inferno.Unifier as U
 
 import Data.Array.MArray
-import InfiniteArray (InfiniteArray)
-import qualified InfiniteArray
+import Language.Inferno.InfiniteArray (InfiniteArray)
+import qualified Language.Inferno.InfiniteArray as InfiniteArray
 
 -- import Data.IORef
 import Control.Monad
@@ -26,7 +26,7 @@ import qualified Data.Foldable as F
 
 import qualified Data.Maybe as Maybe
 
-import qualified TRefMap
+import qualified Language.Inferno.TRefMap as TRefMap
 
 {- The [Generalization] module manages the [rank] fields of the
 unification variables, as well as a global notion of ``current rank'',
@@ -118,7 +118,7 @@ enter state = do
 make_scheme :: forall m s. (F.Foldable s, MonadRef m) =>
    (U.Variable m s -> m Bool) -> U.Variable m s -> m (Scheme m s)
 make_scheme is_generic body = do
-  table <- TRefMap.new
+  table <- TRefMap.new U.equivalent
   let traverse :: (U.Variable m s) -> [U.Variable m s] -> m [U.Variable m s]
       traverse v quantifiers = do
         visited <- TRefMap.member table v
@@ -152,7 +152,7 @@ exit rectypes state roots = do
 
   -- This hash table stores all of these variables, so that we may check
   -- membership in the young generation in constant time.
-  young_generation <- TRefMap.new
+  young_generation <- TRefMap.new U.equivalent
 
   -- This array stores all of these variables, indexed by rank.
   sorted <- (newArray (0, y + 1) [] :: m (ra Int [U.Variable m s]))
@@ -174,7 +174,7 @@ exit rectypes state roots = do
     forM_ vs (U.new_occurs_check is_young)
 
   -- Now, update the rank of every variable in the young generation.
-  visited <- TRefMap.new
+  visited <- TRefMap.new U.equivalent
 
   forM [base_rank .. y] (\ k -> do
      let traverse v = do
@@ -231,21 +231,24 @@ exit rectypes state roots = do
 
 ----------------------------------------------------------------
 instantiate :: forall m ra s.
-               (T.Traversable s, MonadRef m, MonadFresh m,
+               (T.Traversable s,
+                MonadRef m,
+                MonadFresh m,
                 MArray ra [U.Variable m s] m) =>
                State m ra s -> Scheme m s -> m ([U.Variable m s], U.Variable m s)
 instantiate state scheme = do
-  visited <- TRefMap.new 
+  visited <- TRefMap.new U.equivalent
   let copy :: U.Variable m s -> m (U.Variable m s)
       copy v = do
         rnk <- U.rank v
         if rnk > 0 then return v
           else do
+            unless (rnk == generic) $ error "instantiate assertion"
             vs <- TRefMap.lookup visited v
             case vs of
               Just x  -> return x
               Nothing -> do
-                y <- readRef (young state)
+                y  <- readRef (young state)
                 v' <- U.makeFresh Nothing y
                 register_at_rank state v'
                 TRefMap.insert visited v v'
@@ -253,7 +256,6 @@ instantiate state scheme = do
                 case ms of
                    Nothing -> U.set_structure v' Nothing
                    Just s  -> do
-                     --- (a -> m a) -> s a -> m (s a)
                      s' <- T.mapM copy s
                      U.set_structure v' (Just s')
                 return v'

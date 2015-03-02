@@ -2,7 +2,7 @@
 module ML where
 
 import Data.Typeable
-import SolverHi (TermVar)
+import Language.Inferno.SolverHi (TermVar)
 
 data Tm = Var TermVar
         | Abs TermVar Tm

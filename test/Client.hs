@@ -29,8 +29,8 @@ import Data.Array.Base
 import Data.Array.MArray
 import Data.Array.IO
 
-import UnifierSig
-import SolverHi
+import Language.Inferno.UnifierSig
+import Language.Inferno.SolverHi
 
 -- Synatx of System F
 import qualified F
@@ -65,7 +65,8 @@ instance Output F.NominalType where
   type Src F.NominalType = Structure
 
   tovar = F.TyVar
-  
+
+  struc (TyBool)          = F.TyBool
   struc (TyArrow t1 t2)   = (F.TyArrow t1 t2)
   struc (TyProduct t1 t2) = (F.TyProduct t1 t2)
 
@@ -104,10 +105,10 @@ type M = StateT Int IO
 deriving instance Typeable StateT
 
 instance MArray r a m => MArray r a (StateT i m) where
-  getBounds x  = lift $ getBounds x
-  newArray x y = lift $ newArray x y
-  getNumElements x = lift $ getNumElements x
-  unsafeRead a i = lift $ unsafeRead a i
+  getBounds x       = lift $ getBounds x
+  newArray x y      = lift $ newArray x y
+  getNumElements x  = lift $ getNumElements x
+  unsafeRead a i    = lift $ unsafeRead a i
   unsafeWrite a i x = lift $ unsafeWrite a i x 
 
 instance MonadFresh M where
@@ -126,7 +127,7 @@ product_i 2 t u = TyProduct u t
 hastype :: ML.Tm -> Variable -> M C
 hastype (ML.Var x) tau = do
   c <- (inst x tau)
-  return $ fmap (F.ftyapp (F.Var x)) c
+  return $ fmap (\vs -> F.ftyapp (F.Var x) vs) c
 hastype (ML.Abs x u) tau = do
   c <- exist (\ v1 ->
           exist (\ v2 -> do
@@ -232,6 +233,7 @@ genkidid2 =
 app_pair = -- ill-typed 
   ML.App (ML.Pair mlid mlid) mlid
 
+mlnot = ML.Abs "x" (ML.If x (ML.Bool False) (ML.Bool True))
 
 
 inf :: ML.Tm -> IO F.NominalTerm

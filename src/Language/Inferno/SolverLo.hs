@@ -3,7 +3,7 @@
 {-# LANGUAGE RankNTypes, ScopedTypeVariables #-}
 {-# OPTIONS_GHC -fdefer-type-errors #-}
 
-module SolverLo where
+module Language.Inferno.SolverLo where
 
 import Control.Monad.Except
 import Control.Applicative
@@ -13,13 +13,12 @@ import Control.Monad.Catch
 
 import Data.Array.MArray
 import Control.Monad.Ref
--- import Data.IORef
 
 import Data.Typeable
 
-import UnifierSig
-import qualified Unifier as U
-import qualified Generalization as G
+import Language.Inferno.UnifierSig
+import qualified Language.Inferno.Unifier as U
+import qualified Language.Inferno.Generalization as G
 
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -45,7 +44,15 @@ data RawCo m s =
          (RawCo m s)
          [(TermVar, Var m s, Ref m (Maybe (Scheme m s)))]
          (RawCo m s)
-         
+
+instance (Show (RawCo m s)) where
+  show CTrue = "True"
+  show (CConj c1 c2)     = show c1 ++ "," ++ show c2
+  show (CEq v1 v2)       = show v1 ++ " = " ++ show v2
+  show (CExist v c)      = show "Exists " ++ show v ++ show c
+  show (CInstance x v _) = show "instance"
+  show (CDef x v c)      = show x ++ ":" ++ show v ++ "=" ++ show c
+  show (CLet _ c1 xvss c2) = show "let " ++ show c1
 
 data Err m s =
     Unbound TermVar
@@ -91,8 +98,8 @@ solve p rectypes c = do
          CInstance x w witness_hook -> do
            case (Map.lookup x env) of
             Nothing -> throwM $ (Unbound x :: Err m s)
-            Just s  -> do
-              (witnesses, v) <- G.instantiate state s
+            Just sigma  -> do
+              (witnesses, v) <- G.instantiate state sigma
               writeRef witness_hook witnesses
               U.unify v w
          CDef x v c ->

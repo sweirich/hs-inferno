@@ -2,7 +2,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
-module UnifierSig where
+module Language.Inferno.UnifierSig where
 
 
 import Data.Foldable (Foldable(..))

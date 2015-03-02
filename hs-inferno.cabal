@@ -17,20 +17,22 @@ extra-source-files:  README.md
 cabal-version:       >=1.10
 
 library
-  exposed-modules:     Client
-                     , Generalization
-                     , InfiniteArray
-                     , SolverHi
-                     , SolverLo
-                     , TRef
-                     , TRefMap
-                     , TUnionFind
-                     , TypeInf
-                     , Unifier
-                     , UnionFind
-                     , WriteOnce
+  exposed-modules:     Language.Inferno.Generalization
+                     , Language.Inferno.InfiniteArray
+                     , Language.Inferno.SolverHi
+                     , Language.Inferno.SolverLo
+                     , Language.Inferno.TRef
+                     , Language.Inferno.TRefMap
+                     , Language.Inferno.TUnionFind
+                     , Language.Inferno.Unifier
+
   -- other-modules:       
-  other-extensions:    RankNTypes, ScopedTypeVariables, DeriveGeneric, NoImplicitPrelude, DeriveDataTypeable
+  other-extensions:    RankNTypes
+                     , ScopedTypeVariables
+                     , DeriveGeneric
+                     , NoImplicitPrelude
+                     , DeriveDataTypeable
+
   build-depends:       base >=4.7 && <4.8
                      , array >=0.5 && <0.6
                      , containers >= 0.5.5.1
@@ -39,4 +41,5 @@ library
                      , ref-tf >= 0.4.1
                      , transformers >=0.4 && <0.5
   hs-source-dirs:      src
+                     , test
   default-language:    Haskell2010

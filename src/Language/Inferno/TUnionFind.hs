@@ -1,15 +1,22 @@
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# OPTIONS_GHC -funbox-strict-fields #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# OPTIONS_GHC -funbox-strict-fields -fdefer-type-errors #-}
 
-module TUnionFind.IO (Point,
-                      fresh,
-                      repr,
-                      reprT,
-                      find,
-                      union,
-                      equivalent,
-                      is_representative) where
+-- TODO: use a persistant data structure
+-- http://jng.imagine27.com/index.php/2012-08-22-144618_purely-functional-data-structures-algorithms-union-find-haskell.html
+-- Or Conchon / Filliatre: A persistent Union-Find Data structure, ML Workshop 2007
+
+module Language.Inferno.TUnionFind (Point,
+                   fresh,
+                   repr,
+                   reprT,
+                   find,
+                   union,
+                   equivalent,
+                   is_representative) where
 
 {- This module implements a simple and efficient union/find algorithm.
     See Robert E. Tarjan, ``Efficiency of a Good But Not Linear Set
@@ -28,47 +35,57 @@ module TUnionFind.IO (Point,
 
 
 
-import TRef
+import Language.Inferno.TRef
 
-import Data.IORef
+
 import Control.Applicative
 import Control.Monad (when)
 
-import Control.Monad.IO.Class
+import Control.Monad.Trans
+import Control.Monad.Ref
 
-import System.IO.Unsafe
 import Data.Typeable
 
 
-newtype Point a =
-     Point { unPoint :: TRef (Link a) }
-     deriving (Eq, Typeable)
+newtype Point m a =
+     Point { unPoint :: TRef m (Link m a) }
+     deriving (Typeable)
 
-data Link a =
+
+data Link m a =
      Info { weight :: {-# UNPACK #-} !Int, descriptor :: a }
-   | Link {-# UNPACK #-} !(Point a)
+   | Link {-# UNPACK #-} !(Point m a)
      -- ^ Pointer to some other element of the equivalence class.
-     deriving (Eq)
 
+instance (MonadRef m) => Eq (Point m a) where
+  p1 == p2 = unPoint p1 == unPoint p2
 
-showIO (Point p) = do
-  l <- readTRefIO p
+instance (Eq a, MonadRef m) => Eq (Link m a) where
+  (Link p1)    == (Link p2)    = p1 == p2
+  (Info w1 d1) == (Info w2 d2) = w1 == w2 && d1 == d2
+  _ == _ = False
+
+{-
+showIO (Point r p) = do
+  l <- readTRef p
   case l of
     Info weight desc -> return $ show desc
     Link q -> showIO q
 
-instance Show a => Show (Point a) where
+instance Show a => Show (Point r r a) where
   show = unsafePerformIO . showIO
+-}
 
-readPoint (Point p) = liftIO $ readTRefIO p
+
+readPoint (Point p)    = readTRef p
 writePoint (Point p) x = writeTRef p x
 
 
 -- [fresh desc] creates a fresh point and returns it. It forms an
 -- equivalence class of its own, whose descriptor is [desc]. 
-fresh :: a -> IO (Point a)
+fresh :: MonadRef m =>  a -> m (Point m a)
 fresh desc = do
-  r <- newTRefIO (Info { weight=1, descriptor=desc})
+  r <- newTRef (Info {weight=1, descriptor=desc})
   return (Point r)
 
 -- | /O(1)/. @repr point@ returns the representative point of
@@ -76,9 +93,9 @@ fresh desc = do
 --
 -- This version of [repr] does not perform path compression. Thus, it can be
 --   used outside a transaction. 
-repr :: Point a -> IO (Point a)
+repr :: MonadRef m => Point m a -> m (Point m a)
 repr point@(Point ref) = do
-  link <- readTRefIO ref
+  link <- readTRef ref
   case link of
    Link point' -> repr point'
    Info _ _ -> return point
@@ -86,13 +103,13 @@ repr point@(Point ref) = do
 -- Return the descriptor associated with the argument's
 -- equivalence class.
 -- Again, this does not perform path compression.
-find :: Point a -> IO a
+find :: MonadRef m => Point m a -> m a
 find point = do
-  link <- readTRefIO (unPoint point)
+  link <- readTRef (unPoint point)
   case link of
    Info _ desc -> return desc
    Link point' -> do
-     link' <- readTRefIO (unPoint point')
+     link' <- readTRef (unPoint point')
      case link' of
        Info _ desc -> return desc
        Link _ -> 
@@ -103,15 +120,14 @@ find point = do
 --       
 -- This version of [repr] performs path compression and
 --   must be used within a transaction.
---       
-reprT :: Eq a => Point a -> TransM (Link a) (Point a)
+reprT :: (MonadRef m, Eq a) => Point m a -> TransM (Link m a) m (Point m a)
 reprT point = do
-  link <- readPoint point
+  link <- lift $ readPoint point
   case link of
    Link point' -> do
      point'' <- reprT point'
      when (point'' /= point') $ do
-       ref' <- readPoint point'
+       ref' <- lift $ readPoint point'
        writePoint point ref'
      return point''
    Info _ _ -> return point
@@ -137,8 +153,8 @@ union f p1 p2 = do
   point1 <- reprT p1
   point2 <- reprT p2 
   when (point1 /= point2) $ do
-    (Info w1 desc1) <- readPoint point1
-    (Info w2 desc2) <- readPoint point2
+    (Info w1 desc1) <- lift $ readPoint point1
+    (Info w2 desc2) <- lift $ readPoint point2
     ds <- f desc1 desc2
     if w1 >= w2 then do
        writePoint point2 (Link point1)
@@ -148,10 +164,13 @@ union f p1 p2 = do
        writePoint point2 (Info (w1 + w2) ds)
  
     
-equivalent p1 p2 = (==) <$> repr p1 <*> repr p2
+equivalent p1 p2 = do 
+   r1 <- repr p1
+   r2 <- repr p2
+   return $ r1 == r2
 
 is_representative point = do
-  l1 <- readTRefIO (unPoint point)
+  l1 <- readTRef (unPoint point)
   case l1 of
    Link _ -> return False
    Info _ _ -> return True
