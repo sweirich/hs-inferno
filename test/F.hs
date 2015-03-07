@@ -1,5 +1,7 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 module F where
 
+import Data.Typeable
 import Language.Inferno.SolverHi (TermVar)
 
 data Ty b a =
@@ -10,7 +12,7 @@ data Ty b a =
   | TyForall b (Ty a b)
   | TyMu b     (Ty b a)
   -- skip rectypes for now
-    deriving (Eq, Show)
+    deriving (Eq, Show, Typeable)
              
 type NominalType = Ty Int Int
 
@@ -18,14 +20,14 @@ data Tm b a =
     Var TermVar
   | Abs TermVar (Ty b a) (Tm b a)
   | App (Tm b a) (Tm b a)
-  | Let TermVar (Tm b a) (Tm b a)
+  | Let TermVar [a] (Ty b a) (Tm b a) (Tm b a)
   | TyAbs b (Tm b a)
   | TyApp (Tm b a) (Ty b a)
   | Pair (Tm b a) (Tm b a)
   | Proj Int (Tm b a)
   | Bool Bool
   | If (Tm b a) (Tm b a) (Tm b a)
-    deriving (Eq, Show)
+    deriving (Eq, Show, Typeable)
 
 type NominalTerm = Tm Int Int
 

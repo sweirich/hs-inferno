@@ -39,12 +39,14 @@ import Language.Inferno.TRef
 
 
 import Control.Applicative
-import Control.Monad (when)
+import Control.Monad (when, liftM, liftM2)
 
 import Control.Monad.Trans
 import Control.Monad.Ref
+import Control.Monad.EqRef
 
 import Data.Typeable
+
 
 
 newtype Point m a =
@@ -57,10 +59,10 @@ data Link m a =
    | Link {-# UNPACK #-} !(Point m a)
      -- ^ Pointer to some other element of the equivalence class.
 
-instance (MonadRef m) => Eq (Point m a) where
+instance (MonadEqRef m) => Eq (Point m a) where
   p1 == p2 = unPoint p1 == unPoint p2
 
-instance (Eq a, MonadRef m) => Eq (Link m a) where
+instance (Eq a, MonadEqRef m) => Eq (Link m a) where
   (Link p1)    == (Link p2)    = p1 == p2
   (Info w1 d1) == (Info w2 d2) = w1 == w2 && d1 == d2
   _ == _ = False
@@ -120,7 +122,7 @@ find point = do
 --       
 -- This version of [repr] performs path compression and
 --   must be used within a transaction.
-reprT :: (MonadRef m, Eq a) => Point m a -> TransM (Link m a) m (Point m a)
+reprT :: (MonadEqRef m, Eq a) => Point m a -> TransM (Link m a) m (Point m a)
 reprT point = do
   link <- lift $ readPoint point
   case link of
@@ -174,3 +176,31 @@ is_representative point = do
   case l1 of
    Link _ -> return False
    Info _ _ -> return True
+
+
+
+-- A test!
+test :: IO ()
+test = do
+  a <- fresh "a"
+  b <- fresh "b"
+  c <- fresh "c"
+  d <- fresh "d"
+  indubitably $ do
+    union (\x y -> return x) a b
+    union (\x y -> return x) b d
+  b1 <- (equivalent a b)
+  print b1
+  b2 <- (equivalent b c)
+  print (not b2)
+  b3 <- (equivalent c d)
+  print (not b3)
+  b4 <- (equivalent a d)
+  print b4
+
+{-
+prop_uf sets k =
+  let num = length sets in
+  forM [1 .. k] $ do
+      j <-
+-}

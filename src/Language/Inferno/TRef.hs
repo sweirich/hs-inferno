@@ -11,7 +11,7 @@ module Language.Inferno.TRef (TRef,
              readTRef,
              TransM,
              writeTRef,
-             tentatively) where
+             tentatively, indubitably) where
 
 
 import Control.Monad.Catch
@@ -22,17 +22,12 @@ import Control.Applicative
 
 import Data.Typeable
 
--- this file requires our extended version of this module
--- not the one on hackage
+
 import Control.Monad.Ref
-
-
-
--- TODO:
---  * use Control.Monad.Ref to make this file work for both ST and IO
+import Control.Monad.EqRef
 
 {-
-Every cell records both its current (possibly uncommitted) value
+   Every cell records both its current (possibly uncommitted) value
    and its last committed value. A cell is considered stable when
    these two values are (physically) equal, and unstable otherwise.
 -}
@@ -44,7 +39,7 @@ data TRef m a = TRef {
   committed :: Ref m a
 } 
 
-instance (MonadRef m) => Eq (TRef m a) where
+instance (MonadEqRef m) => Eq (TRef m a) where
   tr1 == tr2 = eqRef' (current tr1) (current tr2) &&
                eqRef' (committed tr1) (committed tr2) where
      eqRef' = eqRef (Proxy :: Proxy m)
@@ -97,3 +92,10 @@ tentatively _ f = do
       throwM e
     
 
+indubitably :: forall a b m r . (MonadRef m) => TransM a m b -> m b
+indubitably f = do
+  stack <- newRef []
+  (do result <- runReaderT f stack
+      transactions <- readRef stack
+      forM_ transactions commit
+      return result)

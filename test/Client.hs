@@ -8,6 +8,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Client where
 
@@ -29,8 +30,14 @@ import Data.Array.Base
 import Data.Array.MArray
 import Data.Array.IO
 
+import Control.Monad.Ref
+
 import Language.Inferno.UnifierSig
-import Language.Inferno.SolverHi
+import Language.Inferno.SolverHi as Hi
+import Language.Inferno.SolverLo as Lo
+ 
+import Data.List(intersperse)
+import Data.IORef
 
 -- Synatx of System F
 import qualified F
@@ -72,11 +79,19 @@ instance Output F.NominalType where
 
 type TyVar = Int
 
+instance Output String where
+  type Src String = Structure
+  tovar x = show x
+  struc TyBool = "Bool"
+  struc (TyArrow t1 t2) = "(" ++ t1 ++ " -> " ++ t2 ++ ")"
+  struc (TyProduct t1 t2) = "(" ++ t1 ++ "," ++ t2 ++ ")"
+
+
 --------------------------------------------------------------------------
 
 -- smart constructor for let
-flet x (F.Var y) u | x == y = u
-flet x t u = F.Let x t u
+flet x a b (F.Var y) u | x == y = u
+flet x a b t u = F.Let x a b t u
 
 -- eta-reducing smart constructor for type abstraction
 ftyabs1 :: TyVar -> F.NominalTerm -> F.NominalTerm
@@ -97,7 +112,7 @@ coerce vs1 vs2 t =
     app = F.ftyapp t (map suitable vs1)
     suitable v =
      if  v `elem` vs2 then F.TyVar v else bottom
-                                          
+
 --------------------------------------------------------------------------
 
 type M = StateT Int IO
@@ -117,38 +132,40 @@ instance MonadFresh M where
     put (x + 1)
     return x
 
-type Variable = Var M Structure
+type Variable = Hi.Var M Structure
 
 type C = Co M F.NominalType F.NominalTerm
 
 product_i 1 t u = TyProduct t u
 product_i 2 t u = TyProduct u t
 
+
 hastype :: ML.Tm -> Variable -> M C
 hastype (ML.Var x) tau = do
-  c <- (inst x tau)
-  return $ fmap (\vs -> F.ftyapp (F.Var x) vs) c
+  (inst x tau)
+    <> (\vs -> F.ftyapp (F.Var x) vs) 
 hastype (ML.Abs x u) tau = do
-  c <- exist (\ v1 ->
-          exist (\ v2 -> do
-                  c1 <- tau -==- TyArrow v1 v2
-                  c2 <- hastype u v2
-                  return (c1 ^& def x v1 c2)))
-  return $ fmap (\ (tau1, (tau2, ((), u))) -> F.Abs x tau1 u) c
+  (exist (\ v1 ->
+      exist (\ v2 -> do
+          c1 <- tau -==- TyArrow v1 v2
+          c2 <- hastype u v2
+          return (c1 ^^ def x v1 c2))))
+    <>  \ (tau1, (tau2, u)) -> F.Abs x tau1 u
 hastype (ML.App t1 t2) tau = do
-  c <- exist (\v -> do
+  exist (\v -> do
                c1 <- liftS hastype t1 (TyArrow v tau)
                c2 <- hastype t2 v
                return $ c1 ^& c2)
-  return $ fmap (\ (_, (t1', t2')) -> F.App t1' t2') c
+    <> (\ (_, (t1', t2')) -> F.App t1' t2') 
 
 hastype (ML.Let x t u) tau = do
   -- construct a let constraint
   cu <- hastype u tau
-  c  <- let1 x (hastype t) cu
-  return $ fmap (\ (a, t', (b, _), u') ->
-                  F.Let x (F.ftyabs a t')
-                           (flet x (coerce a b (F.Var x)) u')) c
+  c <- (let1 x (hastype t) cu)
+  return $ fmap (\ (a, t', (b, s), u') ->
+           F.Let x b s (F.ftyabs a t')
+              (flet x b s (coerce a b (F.Var x)) u')) c
+    
   
 hastype (ML.Pair t1 t2) tau = do
   c <- exist_ (\ v1 ->
@@ -176,11 +193,63 @@ hastype (ML.If e1 e2 e3) tau = do
   return $ fmap (\ ((t1,t2),t3) ->
                   F.If t1 t2 t3) (c1 ^& c2 ^& c3)
 
+-------------------------------------------------------------
+constraints t = do
+  c  <- exist_ (hastype t)
+  c2 <- let0 c
+  return $ fmap (\(vs,t) -> F.ftyabs vs t) c2
+  
+
 translate t = do
+  c3 <- constraints t
   c  <- exist_ (hastype t)
   c2 <- let0 c
   let c3 = fmap (\(vs,t) -> F.ftyabs vs t) c2
-  solve (Proxy :: Proxy IOArray) False c3
+  Hi.solve (Proxy :: Proxy IOArray) False c3
+
+
+-------------------------------------------------------------
+dec :: forall m. (Monad m, MonadRef m) => Lo.RawCo m Structure -> m String
+dec x = do
+  decode <- (Lo.new_decoder :: m (Lo.Var m Structure -> m String))
+  let dec_internal x = 
+        case x of
+         Lo.CTrue -> return "True"
+         Lo.CConj c1 c2 -> do
+           s1 <- dec_internal c1
+           s2 <- dec_internal c2
+           return $ s1 ++ "," ++ s2
+         Lo.CEq v1 v2 -> do
+           s1 <- decode v1
+           s2 <- decode v2
+           return $ "{" ++ s1 ++ "=" ++ s2 ++ "}"
+         Lo.CExist v c -> do
+           s1 <- decode v
+           s2  <- dec_internal c
+           return $ "Ex " ++ s1 ++ "." ++ s2
+         Lo.CInstance x v rs -> do
+           s  <- decode v
+           return $ "Inst " ++ x ++ "@" ++ s
+         Lo.CDef x v c -> do
+           s <- decode v
+           s2 <- dec_internal c
+           return $ "(def" ++ x ++ "=" ++ s ++ " in " ++ s2 ++ ")"
+         Lo.CLet _ c1 [] c2 -> do
+           s1 <- dec_internal c1
+           s2 <- dec_internal c2
+           return $ "let0 " ++ s1 ++ " in " ++ s2
+         Lo.CLet _ c1 [(x,v,_)] c2 -> do
+           s1 <- dec_internal c1
+           s2 <- dec_internal c2
+           s3  <- decode v
+           return $ "let1 " ++ x ++ "= \\" ++ s3 ++ "." ++ s1 ++ " in " ++ s2
+         Lo.CLet _ c1 xvss c2 -> do
+           s1 <- dec_internal c1
+           s2 <- dec_internal c2
+           return $ "letn " ++ s1 ++ " in " ++ s2
+           
+  dec_internal x
+     
 
 
 ----------------------------------------------------------
@@ -239,3 +308,4 @@ mlnot = ML.Abs "x" (ML.If x (ML.Bool False) (ML.Bool True))
 inf :: ML.Tm -> IO F.NominalTerm
 inf t =
   evalStateT (translate t) 0
+
