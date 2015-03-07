@@ -14,30 +14,12 @@ module Client where
 
 import Prelude hiding ((^^))
 
-import Data.Foldable (Foldable)
-import qualified Data.Foldable as Foldable
-import Data.Traversable (Traversable)
-import qualified Data.Traversable as Traversable
-
-import Data.Typeable
-
 import Control.Monad
 import Control.Monad.Catch
 
-import Control.Monad.State
-
-import Data.Array.Base
-import Data.Array.MArray
-import Data.Array.IO
-
-import Control.Monad.Ref
-
-import Language.Inferno.UnifierSig
-import Language.Inferno.SolverHi as Hi
-import Language.Inferno.SolverLo as Lo
+import Language.Inferno.SolverM 
  
 import Data.List(intersperse)
-import Data.IORef
 
 -- Synatx of System F
 import qualified F
@@ -45,6 +27,7 @@ import qualified F
 -- Syntax of the untyped calculus (ML)
 import qualified ML
 
+-- Top-level structure of types that the unifier works with
 data Structure a =
     TyArrow a a
   | TyProduct a a
@@ -79,14 +62,6 @@ instance Output F.NominalType where
 
 type TyVar = Int
 
-instance Output String where
-  type Src String = Structure
-  tovar x = show x
-  struc TyBool = "Bool"
-  struc (TyArrow t1 t2) = "(" ++ t1 ++ " -> " ++ t2 ++ ")"
-  struc (TyProduct t1 t2) = "(" ++ t1 ++ "," ++ t2 ++ ")"
-
-
 --------------------------------------------------------------------------
 
 -- smart constructor for let
@@ -115,24 +90,7 @@ coerce vs1 vs2 t =
 
 --------------------------------------------------------------------------
 
-type M = StateT Int IO
-
-deriving instance Typeable StateT
-
-instance MArray r a m => MArray r a (StateT i m) where
-  getBounds x       = lift $ getBounds x
-  newArray x y      = lift $ newArray x y
-  getNumElements x  = lift $ getNumElements x
-  unsafeRead a i    = lift $ unsafeRead a i
-  unsafeWrite a i x = lift $ unsafeWrite a i x 
-
-instance MonadFresh M where
-  fresh = do
-    x <- get
-    put (x + 1)
-    return x
-
-type Variable = Hi.Var M Structure
+type Variable = Var M Structure
 
 type C = Co M F.NominalType F.NominalTerm
 
@@ -199,58 +157,11 @@ constraints t = do
   c2 <- let0 c
   return $ fmap (\(vs,t) -> F.ftyabs vs t) c2
   
-
 translate t = do
   c3 <- constraints t
-  c  <- exist_ (hastype t)
-  c2 <- let0 c
-  let c3 = fmap (\(vs,t) -> F.ftyabs vs t) c2
-  Hi.solve (Proxy :: Proxy IOArray) False c3
+  solve c3
 
-
--------------------------------------------------------------
-dec :: forall m. (Monad m, MonadRef m) => Lo.RawCo m Structure -> m String
-dec x = do
-  decode <- (Lo.new_decoder :: m (Lo.Var m Structure -> m String))
-  let dec_internal x = 
-        case x of
-         Lo.CTrue -> return "True"
-         Lo.CConj c1 c2 -> do
-           s1 <- dec_internal c1
-           s2 <- dec_internal c2
-           return $ s1 ++ "," ++ s2
-         Lo.CEq v1 v2 -> do
-           s1 <- decode v1
-           s2 <- decode v2
-           return $ "{" ++ s1 ++ "=" ++ s2 ++ "}"
-         Lo.CExist v c -> do
-           s1 <- decode v
-           s2  <- dec_internal c
-           return $ "Ex " ++ s1 ++ "." ++ s2
-         Lo.CInstance x v rs -> do
-           s  <- decode v
-           return $ "Inst " ++ x ++ "@" ++ s
-         Lo.CDef x v c -> do
-           s <- decode v
-           s2 <- dec_internal c
-           return $ "(def" ++ x ++ "=" ++ s ++ " in " ++ s2 ++ ")"
-         Lo.CLet _ c1 [] c2 -> do
-           s1 <- dec_internal c1
-           s2 <- dec_internal c2
-           return $ "let0 " ++ s1 ++ " in " ++ s2
-         Lo.CLet _ c1 [(x,v,_)] c2 -> do
-           s1 <- dec_internal c1
-           s2 <- dec_internal c2
-           s3  <- decode v
-           return $ "let1 " ++ x ++ "= \\" ++ s3 ++ "." ++ s1 ++ " in " ++ s2
-         Lo.CLet _ c1 xvss c2 -> do
-           s1 <- dec_internal c1
-           s2 <- dec_internal c2
-           return $ "letn " ++ s1 ++ " in " ++ s2
-           
-  dec_internal x
-     
-
+inf = runSolverM . translate
 
 ----------------------------------------------------------
 -- some test cases  
@@ -305,7 +216,4 @@ app_pair = -- ill-typed
 mlnot = ML.Abs "x" (ML.If x (ML.Bool False) (ML.Bool True))
 
 
-inf :: ML.Tm -> IO F.NominalTerm
-inf t =
-  evalStateT (translate t) 0
 

@@ -67,7 +67,10 @@ class Pretty a where
 
 -- The output of the unifier must be an instance of this class.
 -- TODO: rename these members
-class (Traversable (Src t), Pretty t) => Output t where
+class (Typeable t,
+       Show t,
+       ZipM (Src t),
+       Traversable (Src t)) => Output t where
   type Src t :: * -> *
   tovar  :: Int -> t
   struc  :: (Src t) t -> t
