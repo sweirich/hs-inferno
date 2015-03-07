@@ -54,18 +54,18 @@ data Structure a =
 instance ZipM Structure where
   zipM_ f TyBool TyBool = return ()
   zipM_ f (TyArrow t1 t2) (TyArrow u1 u2) = do
-    f t1 t2
-    f t1 u2
+    f t1 u1
+    f t2 u2
   zipM_ f (TyProduct t1 t2) (TyProduct u1 u2) = do
-    f t1 t2
-    f u1 u2
+    f t1 u1
+    f t2 u2
   zipM_ f t1 t2 = throwM $ ZipError t1 t2
 
   zipM f TyBool TyBool = return TyBool
   zipM f (TyArrow t1 t2) (TyArrow u1 u2) = do
-    liftM2 TyArrow (f t1 t2) (f t1 t2)
+    liftM2 TyArrow (f t1 u1) (f t2 u2)
   zipM f (TyProduct t1 t2) (TyProduct u1 u2) = do
-    liftM2 TyProduct (f t1 t2) (f u1 u2)
+    liftM2 TyProduct (f t1 u1) (f t2 u2)
   zipM f t1 t2 = throwM $ ZipError t1 t2
 
 instance Output F.NominalType where

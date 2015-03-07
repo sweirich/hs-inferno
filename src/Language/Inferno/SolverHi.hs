@@ -91,7 +91,7 @@ exist_aux t f = do
   v <- Lo.makeFresh t
   Co rc k <- f v
   let raw_co = (Lo.CExist v rc)
-  liftIO $ putStrLn $ "new constraint:" ++ (show raw_co)
+  -- liftIO $ putStrLn $ "new constraint:" ++ (show raw_co)
   return $ Co raw_co
               (\ decode -> do t <- decode v
                               a <- k decode
@@ -109,7 +109,7 @@ exist_aux_ :: (MonadIO m, MonadFresh m, MonadRef m)
 exist_aux_ t f = do
   v <- Lo.makeFresh t
   Co rc k <- f v
-  liftIO $ putStrLn $ "new constraint: exists " ++ show (U.getId v)
+  -- liftIO $ putStrLn $ "new constraint: exists " ++ show (U.getId v)
   return $ Co (Lo.CExist v rc) k
 
 exist_ f = exist_aux_ Nothing f
@@ -144,7 +144,7 @@ v1 -=- v2 = Co (Lo.CEq v1 v2) (\env -> return ())
 
 inst :: (MonadRef m, MonadIO m) => TermVar -> Var m (Src t) -> m (Co m t [t])
 inst x v = do
-  liftIO $ putStrLn $ "new constraint: inst " ++ show x ++ " to " ++ show (U.getId v)
+  -- liftIO $ putStrLn $ "new constraint: inst " ++ show x ++ " to " ++ show (U.getId v)
   witnesses <- newRef []
   return $ Co (Lo.CInstance x v witnesses)
               (\ decode -> do
@@ -197,7 +197,7 @@ letn xs f1 (Co rc2 k2) = do
 
   let raw_co = (Lo.CLet generalizable_hook rc1 xvss rc2) 
 
-  liftIO $ putStrLn $ "new constraint:" ++ (show raw_co)
+  -- liftIO $ putStrLn $ "new constraint:" ++ (show raw_co)
   
   -- Build a CLet constraint
   return $ Co raw_co

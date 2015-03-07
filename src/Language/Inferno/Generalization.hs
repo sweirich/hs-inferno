@@ -308,9 +308,9 @@ exit rectypes state roots = do
         
   schemes <- forM roots (make_scheme is_generic)
 
-  forM_ vs' (\v -> do 
+{-  forM_ vs' (\v -> do 
                 vi <- U.desc_id v
-                liftIO $ putStrLn $ "Generalizing " ++ show vi)
+                liftIO $ putStrLn $ "Generalizing " ++ show vi) -}
   
   return (vs', schemes)
 
@@ -327,8 +327,8 @@ instantiate :: forall m ra s.
                State m ra s -> Scheme m s -> m ([U.Variable m s], U.Variable m s)
 instantiate state scheme = do
   qsi <- mapM U.desc_id (quantifiers scheme)
-  mapM (\i -> do
-              liftIO $ putStrLn $ "freshening: " ++ show i) qsi
+{-  mapM (\i -> do
+              liftIO $ putStrLn $ "freshening: " ++ show i) qsi -}
   --  Prepare to mark which variables have been visited and record their copy. 
   visited <- VarMap.new 
   -- If the variable [v] has rank [generic], then [copy v] returns a copy of
@@ -344,7 +344,7 @@ instantiate state scheme = do
         vi <- U.desc_id v
         rnk <- U.rank v
         if rnk > 0 then do
-          liftIO $ putStrLn $ "copy: rank>0 for " ++ (show vi)
+          -- liftIO $ putStrLn $ "copy: rank>0 for " ++ (show vi)
           return v
 
           else do
@@ -356,7 +356,7 @@ instantiate state scheme = do
             case vs of
               Just x  -> do
                 xi <- U.desc_id x
-                liftIO $ putStrLn $ "copy: found " ++ (show vi) ++ " as " ++ (show xi)
+                -- liftIO $ putStrLn $ "copy: found " ++ (show vi) ++ " as " ++ (show xi)
                 return x
               Nothing -> do
                 -- The variable must be copied, and has not been copied yet. Create a
@@ -367,8 +367,8 @@ instantiate state scheme = do
                 y  <- readRef (young state)
                 v' <- U.makeFresh Nothing y
                 vi' <- U.desc_id v'
-                liftIO $ putStrLn $ "copy: mapping "
-                  ++ (show vi) ++ " to " ++ (show vi')
+                {- liftIO $ putStrLn $ "copy: mapping "
+                  ++ (show vi) ++ " to " ++ (show vi') -}
                 register_at_rank state v'
                 VarMap.insert visited vi v'
                 ms <- U.structure v

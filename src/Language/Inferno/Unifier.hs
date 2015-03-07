@@ -62,12 +62,15 @@ data Variable m s = Variable
                   { getPoint :: UF.Point m (Descriptor m s), getId :: Int }
   deriving (Typeable)
 
+           
+{- -- debugging information
 vars = unsafePerformIO (newIORef [])
 add_var v = do
   vs <- readIORef vars
   writeIORef vars (v:vs)
 
-
+-- show the equivalence classes after unification
+classes :: Proxy s -> [(Int,Int,s (Variable IO s))]
 classes = do
   vs <- readIORef vars
   c <- forM vs (\v -> do
@@ -78,6 +81,7 @@ classes = do
   
   let us = List.groupBy (\ (x,y,_) (z,w,_) -> y == w) (s c)
   return us
+-}
 
 {- Every equivalence class carries a descriptor which contains
    the following information. -}
@@ -95,13 +99,12 @@ data Descriptor m s = Descriptor {
     descRank  :: (Ref m) Int
   } deriving (Typeable)
 
-
---instance Eq (Variable m s) where
---  v1 == v2 = (getId v1) == (getId v2) 
   
 instance Eq (Descriptor m s) where
   d1 == d2 = (descId d1) == (descId d2)
 
+-- displays the identifier when the variable is created
+-- not the current representative of its equivalence class
 instance Show (Variable r s) where
   show v = "V" ++ (show(getId v))
   
@@ -150,8 +153,8 @@ makeFresh ms rank = do
      rnk <- newRef rank
      point <- UF.fresh $ Descriptor id str rnk
      let v = Variable point id
-     (seq  (unsafePerformIO (add_var v))
-             (return v))
+     -- (seq  (unsafePerformIO (add_var v)))
+     return v
 
 -----------------------------------------------------------------
 
@@ -168,8 +171,8 @@ unify_internal v1 v2 =
      optimization; it is essential in guaranteeing termination, since we are
      dealing with potentially cyclic structures. -}
   
-  seq (unsafePerformIO (putStrLn $ show (getId v1) ++ "<=>" ++ show (getId v2)))
-      UF.union unify_descriptors (getPoint v1) (getPoint v2)
+  --seq (unsafePerformIO (putStrLn $ show (getId v1) ++ "<=>" ++ show (getId v2)))
+  UF.union unify_descriptors (getPoint v1) (getPoint v2)
 
 
 -- [unify_descriptors desc1 desc2] combines the descriptors [desc1] and

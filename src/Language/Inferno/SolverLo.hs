@@ -105,9 +105,9 @@ solve p rectypes c = do
          CTrue       -> return ()
          CConj c1 c2 -> solve_internal c1 env >> solve_internal c2 env
          CEq v w     -> do
-           vi <- U.desc_id v
-           wi <- U.desc_id w                 
-           liftIO $ putStrLn $ "unifying " ++ show vi ++ " and " ++ show wi 
+           -- vi <- U.desc_id v
+           -- wi <- U.desc_id w                 
+           -- liftIO $ putStrLn $ "unifying " ++ show vi ++ " and " ++ show wi 
            U.unify v w
          CExist v c  -> do
            G.register state v
@@ -117,16 +117,16 @@ solve p rectypes c = do
            case (Map.lookup x env) of
             Nothing -> throwM $ (Unbound x :: Err m s)
             Just sigma  -> do
-              liftIO $ putStrLn $ "instantiating: " ++ show x
+              -- liftIO $ putStrLn $ "instantiating: " ++ show x
               (witnesses, v) <- G.instantiate state sigma
               oldw <- readRef witness_hook
               unless (null oldw) $ error "BUG: witness hook not empty"
               writeRef witness_hook witnesses
-              forM_ witnesses (\v -> do
+              {- forM_ witnesses (\v -> do
                        vi <- U.desc_id v
                        liftIO $ putStrLn $ "writing: " ++ show vi)
               liftIO $ putStrLn $ "unifying at inst: " ++ show (U.getId v) ++ " "
-                ++ show (U.getId w)
+                ++ show (U.getId w) -}
               U.unify v w
          CDef x v c ->
            solve_internal c (Map.insert x (G.trivial v) env)
