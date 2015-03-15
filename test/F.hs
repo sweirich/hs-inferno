@@ -2,7 +2,7 @@
 module F where
 
 import Data.Typeable
-import Language.Inferno.SolverHi (TermVar)
+import Language.Inferno.Solver (TermVar)
 
 data Ty b a =
     TyVar a

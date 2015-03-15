@@ -1,5 +1,4 @@
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -82,10 +81,11 @@ tentatively :: forall a b e m r . (MonadCatch m, MonadRef m, Eq a, Exception e)
                => Proxy e -> TransM a m b -> m b
 tentatively _ f = do
   stack <- newRef []
-  (do result <- runReaderT f stack
+  indubitably f 
+{-  (do result <- runReaderT f stack
       transactions <- readRef stack
       forM_ transactions commit
-      return result)
+      return result) -}
     `catch` \(e :: e) -> do
       transactions <- readRef stack
       forM_ transactions rollback
@@ -95,7 +95,7 @@ tentatively _ f = do
 indubitably :: forall a b m r . (MonadRef m) => TransM a m b -> m b
 indubitably f = do
   stack <- newRef []
-  (do result <- runReaderT f stack
-      transactions <- readRef stack
-      forM_ transactions commit
-      return result)
+  result <- runReaderT f stack
+  transactions <- readRef stack
+  forM_ transactions commit
+  return result

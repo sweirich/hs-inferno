@@ -6,13 +6,13 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 module Language.Inferno.SolverM (M,
-                                 solve,
+                                 RepArray,
                                  runSolverM,
                                  Foldable,
                                  Traversable,
                                  Typeable,
-                                 module Language.Inferno.UnifierSig,
-                                 module Language.Inferno.SolverHi) where
+                                 module Control.Monad.Catch,
+                                 module Language.Inferno.UnifierSig) where
 
 
 import Language.Inferno.UnifierSig
@@ -35,19 +35,16 @@ import Data.Array.IO
 
 import Data.IORef
 
-import Language.Inferno.SolverHi hiding (solve)
-import qualified Language.Inferno.SolverHi as Hi
-import qualified Language.Inferno.SolverLo as Lo
+--import Language.Inferno.SolverHi hiding (solve)
+--import qualified Language.Inferno.SolverHi as Hi
+--import qualified Language.Inferno.SolverLo as Lo
 
+type RepArray = IOArray
 
 newtype M a = SolverM (StateT Int IO a)
    deriving (Typeable, MonadState Int, Applicative, Monad, Functor)
             
 unSolverM (SolverM m) = m
-
-solve :: (Show (Src t (Var M (Src t))),
-          Output t) => Co M t a -> M a
-solve = Hi.solve (Proxy :: Proxy IOArray) False
 
 runSolverM :: M a -> IO a
 runSolverM (SolverM m) = evalStateT m 0

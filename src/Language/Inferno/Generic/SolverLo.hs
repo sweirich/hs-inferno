@@ -3,7 +3,7 @@
 {-# LANGUAGE RankNTypes, ScopedTypeVariables #-}
 {-# OPTIONS_GHC -fdefer-type-errors #-}
 
-module Language.Inferno.SolverLo where
+module Language.Inferno.M.SolverLo where
 
 import Control.Monad.Except
 import Control.Applicative
@@ -19,8 +19,9 @@ import Data.Typeable
 import qualified Data.Maybe as Maybe
 
 import Language.Inferno.UnifierSig
-import qualified Language.Inferno.Unifier as U
-import qualified Language.Inferno.Generalization as G
+import Language.Inferno.SolverM (M)
+import qualified Language.Inferno.M.Unifier as U
+import qualified Language.Inferno.M.Generalization as G
 
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -31,75 +32,75 @@ import qualified Data.List as List
 type TermVar = String
 
 -- type schemes
-type Scheme m s = G.Scheme m s
+type Scheme s = G.Scheme s
 
 -- type variables
-type Var m s = U.Variable m s
+type Var s = U.Variable s
  
 
-data RawCo m s =
+data RawCo s =
     CTrue
-  | CConj (RawCo m s) (RawCo m s)
-  | CEq (Var m s) (Var m s)
-  | CExist (Var m s) (RawCo m s)
-  | CInstance TermVar (Var m s) (Ref m [Var m s])
-  | CDef TermVar (Var m s) (RawCo m s)
-  | CLet (Ref m (Maybe [Var m s]))
-           -- variables to generalize
-         (RawCo m s)
-           -- constraint from RHSs
-         [(TermVar, Var m s, Ref m (Maybe (Scheme m s)))]
-           -- constraint abstraction???
-         (RawCo m s)
-           -- constraint from body
+  | CConj (RawCo s) (RawCo s)
+  | CEq (Var s) (Var s)
+  | CExist (Var s) (RawCo s)
+  | CInstance TermVar (Var s) (Ref M [Var s])
+  | CDef TermVar (Scheme s) (RawCo s)
+  | CLet Bool -- recursive let?
+         (Ref M (Maybe [Var s]))
+           -- ^ variables to generalize
+         (RawCo s)
+           -- ^ constraint from RHSs
+         [(TermVar, Var s, Ref M (Maybe (Scheme s)))]
+           -- ^ (multiple) term vars and their types
+         (RawCo s)
+           -- ^ constraint from body
 
 
-instance (Show (RawCo m s)) where
+instance (Show (RawCo s)) where
   show CTrue             = "True"
   show (CConj c1 c2)     = show c1 ++ "," ++ show c2
   show (CEq v1 v2)       = "{" ++ show v1 ++ " = " ++ show v2 ++ "}"
   show (CExist v c)      = "Ex " ++ show (U.getId v) ++ "." ++ show c
   show (CInstance x v _) = "inst " ++ x ++ "@" ++ show (U.getId v)
-  show (CDef x v c)      = "(def" ++ x ++ "=" ++ show (U.getId v)
+  -- TODO: add quantifiers
+  show (CDef x v c)      = "(def" ++ x ++ "=" ++ show (U.getId (G.body v))
                            ++ " in " ++ show c ++ ")"
-  show (CLet _ c1 [] c2) = "let0 " ++ show c1 ++ " in " ++ show c2
-  show (CLet _ c1 [(x,v,_)] c2) =
+  show (CLet _ _ c1 [] c2) = "let0 " ++ show c1 ++ " in " ++ show c2
+  show (CLet _ _ c1 [(x,v,_)] c2) =
     "let1 " ++ x  ++ "= \\" ++ show (U.getId v) ++ "." ++ show c1 ++ " in " ++ show c2
-  show (CLet _ c1 _ c2) = "letn " ++ show c1 ++ " in " ++ show c2
+  show (CLet _ _ c1 _ c2) = "letn " ++ show c1 ++ " in " ++ show c2
 
-data Err m s =
+data Err s =
     Unbound TermVar
-  | Unify (Var m s) (Var m s)
-  | Cycle (Var m s)
+  | Unify (Var s) (Var s)
+  | Cycle (Var s)
     deriving (Typeable, Show)
 
-instance (Typeable m, Typeable s) => Exception (Err m s)
+instance (Typeable s) => Exception (Err s)
 
-type Environment m s = Map TermVar (Scheme m s)
+type Environment s = Map TermVar (Scheme s)
 
-env_lookup :: (Monad m) => TermVar -> SolverT s m (Maybe (Scheme m s))
+env_lookup :: (Monad m) => TermVar -> SolverT s m (Maybe (Scheme s))
 env_lookup x = do
   env <- ask  
   return $ Map.lookup x env
 
-env_extend :: (Monad m) => TermVar -> Scheme m s -> SolverT s m a -> SolverT s m a
+env_extend :: (Monad m) => TermVar -> Scheme s -> SolverT s m a -> SolverT s m a
 env_extend x s = local (Map.insert x s)
   
-type SolverT s m = ReaderT (Environment m s) m
+type SolverT s m = ReaderT (Environment s) m
 
 makeFresh t = do
   U.makeFresh t G.no_rank
 
-solve :: forall m s ra.
-         (ZipM s, Typeable s, MonadFresh m, MonadEqRef m, MonadIO m,
-          MonadCatch m, Typeable m, Show (s (U.Variable m s)), 
-          MArray ra [U.Variable m s] m) =>
-          Proxy ra -> Bool -> RawCo m s -> m ()
-solve p rectypes c = do
+solve :: forall s.
+         (ZipM s, Typeable s, Show (s (U.Variable s))) =>
+          Bool -> RawCo s -> M ()
+solve rectypes c = do
   state <- G.initialize 
-  let state' :: G.State m ra s
+  let state' :: G.State s
       state' = state
-  let solve_internal :: RawCo m s -> Environment m s -> m ()
+  let solve_internal :: RawCo s -> Environment s -> M ()
       solve_internal c env =
         case c of
          CTrue       -> return ()
@@ -115,26 +116,25 @@ solve p rectypes c = do
          CInstance x w witness_hook -> do
            -- the environment provides a type scheme for [x]
            case (Map.lookup x env) of
-            Nothing -> throwM $ (Unbound x :: Err m s)
+            Nothing -> throwM $ (Unbound x :: Err s)
             Just sigma  -> do
               -- liftIO $ putStrLn $ "instantiating: " ++ show x
               (witnesses, v) <- G.instantiate state sigma
               oldw <- readRef witness_hook
               unless (null oldw) $ error "BUG: witness hook not empty"
               writeRef witness_hook witnesses
-              {- forM_ witnesses (\v -> do
-                       vi <- U.desc_id v
-                       liftIO $ putStrLn $ "writing: " ++ show vi)
-              liftIO $ putStrLn $ "unifying at inst: " ++ show (U.getId v) ++ " "
-                ++ show (U.getId w) -}
               U.unify v w
-         CDef x v c ->
-           solve_internal c (Map.insert x (G.trivial v) env)
-         CLet generalizable_hook c1 xvss c2 -> do
+         CDef x s c ->
+           solve_internal c (Map.insert x s env)
+         CLet is_rec generalizable_hook c1 xvss c2 -> do
            G.enter state
-           let vs = map (\ (_,v,_) -> v) xvss
+           let vs = map (\ (_,v,_) -> v) xvss               
            forM_ vs (G.register state)
-           solve_internal c1 env
+           -- recursive let
+           let env2 = if is_rec then
+                         foldr (\ (x,v,_) -> Map.insert x (G.trivial v)) env xvss
+                      else env
+           solve_internal c1 env2
            (generalizable, ss) <- G.exit rectypes state vs
            env' <- foldM (\ env1 ((x,_,scheme_hook), s) -> do
                                           writeRef scheme_hook (Just s)
@@ -146,18 +146,17 @@ solve p rectypes c = do
 
 ----------------------------------------------------------------------
 
-showScheme :: forall m t.
-              (MonadRef m, Output t, Show t, MonadIO m) =>
-              Proxy t -> Scheme m (Src t) -> m String
+showScheme :: forall t. (Output t, Show t) =>
+              Proxy t -> Scheme (Src t) -> M String
 showScheme p s = do
-  decode <- (new_decoder :: m (Decoder m t))
+  decode <- (new_decoder :: M (Decoder t))
   (vs,b) <- decode_scheme decode s
   let vars = concat (List.intersperse " " (map show vs))
   return $ "Forall " ++ vars ++ "." ++ show b
 
 -- Decoding types
 
--- decode_variable :: Var m (Src t) -> m Int
+-- decode_variable :: Var (Src t) -> m Int
 decode_variable x = do
   vi  <- U.desc_id x
   rnk <- U.rank x
@@ -169,9 +168,9 @@ decode_variable x = do
 decode_variable_as_type x =
   liftM tovar (decode_variable x)
                     
-type Decoder m t = Var m (Src t) -> m t
+type Decoder t = Var (Src t) -> M t
 
-new_decoder :: (MonadIO m, MonadRef m, Output t) => m (Decoder m t)                 
+new_decoder :: (Output t) => M (Decoder t)                 
 new_decoder = U.new_acyclic_decoder
 
 decode_scheme decode s = do

@@ -17,15 +17,18 @@ extra-source-files:  README.md
 cabal-version:       >=1.10
 
 library
-  exposed-modules:     Language.Inferno.Generalization
-                     , Language.Inferno.InfiniteArray
-                     , Language.Inferno.SolverHi
-                     , Language.Inferno.SolverLo
-                     , Language.Inferno.TRef
-                     , Language.Inferno.TRefMap
-                     , Language.Inferno.TUnionFind
-                     , Language.Inferno.Unifier
+  exposed-modules:     Language.Inferno.M.Generalization
+                     , Language.Inferno.M.InfiniteArray
+                     , Language.Inferno.M.SolverHi
+                     , Language.Inferno.M.SolverLo
+                     , Language.Inferno.M.TRef
+                     , Language.Inferno.M.VarMap
+                     , Language.Inferno.M.TUnionFind
+                     , Language.Inferno.M.Unifier
                      , Control.Monad.EqRef
+                     , Language.Inferno.SolverM
+                     , Language.Inferno.Solver
+                     , Language.Inferno.UnifierSig
 
   -- other-modules:       
   other-extensions:    RankNTypes
@@ -34,7 +37,7 @@ library
                      , NoImplicitPrelude
                      , DeriveDataTypeable
 
-  build-depends:          base >=4.7 && <4.8
+  build-depends:       base >=4.7 && <4.8
                      , array >=0.5 && <0.6
                      , containers >= 0.5.5.1
                      , exceptions >=0.8 && <0.9
@@ -43,7 +46,7 @@ library
                      , transformers >=0.4 && <0.5
                      , stm >= 2.4.3
                      , pretty >= 1.1.1.1
-
+                     , hashtables >= 1.2.0.2
 
 
   hs-source-dirs:      src

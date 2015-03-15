@@ -15,9 +15,8 @@ module Client where
 import Prelude hiding ((^^))
 
 import Control.Monad
-import Control.Monad.Catch
 
-import Language.Inferno.SolverM 
+import Language.Inferno.Solver 
  
 import Data.List(intersperse)
 
@@ -90,9 +89,9 @@ coerce vs1 vs2 t =
 
 --------------------------------------------------------------------------
 
-type Variable = Var M Structure
+type Variable = Var Structure
 
-type C = Co M F.NominalType F.NominalTerm
+type C = Co F.NominalType F.NominalTerm
 
 product_i 1 t u = TyProduct t u
 product_i 2 t u = TyProduct u t
@@ -101,25 +100,25 @@ product_i 2 t u = TyProduct u t
 hastype :: ML.Tm -> Variable -> M C
 hastype (ML.Var x) tau = do
   (inst x tau)
-    <> (\vs -> F.ftyapp (F.Var x) vs) 
+    <$$> (\vs -> F.ftyapp (F.Var x) vs) 
 hastype (ML.Abs x u) tau = do
   (exist (\ v1 ->
       exist (\ v2 -> do
           c1 <- tau -==- TyArrow v1 v2
           c2 <- hastype u v2
-          return (c1 ^^ def x v1 c2))))
-    <>  \ (tau1, (tau2, u)) -> F.Abs x tau1 u
+          return (c1 ^^ def x (trivial v1) c2))))
+    <$$>  \ (tau1, (tau2, u)) -> F.Abs x tau1 u
 hastype (ML.App t1 t2) tau = do
   exist (\v -> do
                c1 <- liftS hastype t1 (TyArrow v tau)
                c2 <- hastype t2 v
                return $ c1 ^& c2)
-    <> (\ (_, (t1', t2')) -> F.App t1' t2') 
+    <$$> (\ (_, (t1', t2')) -> F.App t1' t2') 
 
 hastype (ML.Let x t u) tau = do
-  -- construct a let constraint
+  -- construct a (non-recursive) let constraint
   cu <- hastype u tau
-  c <- (let1 x (hastype t) cu)
+  c <- (let1 False x (hastype t) cu)
   return $ fmap (\ (a, t', (b, s), u') ->
            F.Let x b s (F.ftyabs a t')
               (flet x b s (coerce a b (F.Var x)) u')) c
@@ -159,7 +158,7 @@ constraints t = do
   
 translate t = do
   c3 <- constraints t
-  solve c3
+  solve False c3
 
 inf = runSolverM . translate
 
@@ -217,3 +216,11 @@ mlnot = ML.Abs "x" (ML.If x (ML.Bool False) (ML.Bool True))
 
 
 
+test = do
+  mapM_ inf
+    [mlid,
+     delta,
+     deltadelta,
+     idid,
+     k,
+     genid, genidid, genkidid, genkidid2, mlnot]

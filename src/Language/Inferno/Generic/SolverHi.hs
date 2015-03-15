@@ -158,7 +158,7 @@ inst x v = do
 -- The [CDef] form is so trivial that it deserves its own syntax. Viewing it
 -- as a special case of [CLet] would be more costly (by a constant factor). 
 
-def :: TermVar -> Var m (Src t) -> Co m t a -> Co m t a
+-- def :: TermVar -> Var m (Src t) -> Co m t a -> Co m t a
 def x v (Co rc k) = Co (Lo.CDef x v rc) k
 
 -- The general form of [CLet] involves two constraints, the left-hand side and
@@ -178,7 +178,7 @@ letn :: (MonadFresh m, MonadRef m, Output t) =>
         -> Co m t b
         -> m (Co m t ([Int], a, [ ([Int],t) ], b))
 -}
-letn xs f1 (Co rc2 k2) = do
+letn b xs f1 (Co rc2 k2) = do
   -- For each term variable [x], create a fresh type variable [v], as in
   -- [CExist]. Also, create an uninitialized scheme hook, which will receive
   -- the type scheme of [x] after the solver runs. 
@@ -195,7 +195,7 @@ letn xs f1 (Co rc2 k2) = do
   -- all generalizable variables in the left-hand side.
   generalizable_hook <- newRef Nothing
 
-  let raw_co = (Lo.CLet generalizable_hook rc1 xvss rc2) 
+  let raw_co = (Lo.CLet b generalizable_hook rc1 xvss rc2) 
 
   -- liftIO $ putStrLn $ "new constraint:" ++ (show raw_co)
   
@@ -220,8 +220,8 @@ let1 :: (MonadFresh m, MonadRef m, Output t) =>
         -> Co m t b
         -> m (Co m t ([Int], a, ([Int],t), b))
 -}
-let1 x f1 c2 = do
-  c <- letn [ x ] (\ [x] -> f1 x) c2
+let1 b x f1 c2 = do
+  c <- letn b [ x ] (\ [x] -> f1 x) c2
   return $ fmap
     (\(generalizable, v1, [ss], v2) ->
                (generalizable, v1, ss, v2)) c
@@ -231,8 +231,8 @@ let0 :: (MonadFresh m, MonadRef m, Output t) =>
         Co m t a ->
         m (Co m t ([Int], a))
 -}
-let0 c1 = do
-  letn [] (\ _ -> return c1) (pure ())
+let0 b c1 = do
+  letn b [] (\ _ -> return c1) (pure ())
     <>
     (\ (generalizable, v1, _, ()) ->
           (generalizable, v1))

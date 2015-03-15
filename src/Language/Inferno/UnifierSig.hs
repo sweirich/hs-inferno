@@ -33,6 +33,7 @@ class (Typeable t, Traversable t, Foldable t) => ZipM t where
   zipM_ :: (Typeable a, Show a, MonadThrow m) =>
       (a -> a -> m ()) -> t a -> t a -> m ()
 
+{-
 -- From Conor's email
 -- https://mail.haskell.org/pipermail/libraries/2012-July/018249.html
 class Functor f => HalfZippable f where
@@ -50,7 +51,7 @@ class Functor f => HalfZippable f where
     halfZipWithM_ :: (Monad m) =>
                      (a -> b -> m ()) -> f a -> f b -> m Bool
 
-    
+-}    
 
 
 class Pretty a where
@@ -69,7 +70,7 @@ class Pretty a where
 -- TODO: rename these members
 class (Typeable t,
        Show t,
-       ZipM (Src t),
+       ZipM (Src t), 
        Traversable (Src t)) => Output t where
   type Src t :: * -> *
   tovar  :: Int -> t

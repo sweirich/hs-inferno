@@ -73,3 +73,19 @@ TODO
 
   - Replace exceptions with something else? Or figure out how to get the type
     inferencer to give better error messages at least?
+
+(Planned) Extensions
+------------------------
+- type annotations (done)
+- polymorphic recursion
+- type classes
+- GADTs
+- kinds
+- higher-rank polymorphism
+
+Library Overview
+----------------
+
+SolverHi.hs
+
+SolverLo.hs

@@ -17,14 +17,8 @@ import Prelude hiding ((^^),abs)
 
 import Control.Applicative
 import Control.Monad
-import Control.Monad.Catch
 
-import Language.Inferno.SolverM
-
-
--- import qualified Language.Inferno.SolverLo as Lo
--- import qualified Language.Inferno.Generalization as G
--- import qualified Language.Inferno.Unifier as U
+import Language.Inferno.Solver
 
 import Text.PrettyPrint (Doc)
 import qualified Text.PrettyPrint as PP
@@ -52,7 +46,7 @@ data Tm  =
     Var TermVar
   | Abs TermVar Annot Tm 
   | App Tm Tm
-  | Let TermVar Tm Tm
+  | Let TermVar Annot Tm Tm
   | TyAbs Int Tm
   | TyApp Tm Type 
   | Pair  Tm Tm
@@ -147,7 +141,7 @@ instance Pretty Tm where
   prec (Abs _ _ _) = 5
   prec (TyAbs _ _) = 5
   prec (Proj _ _)  = 5
-  prec (Let _ _ _) = 5
+  prec (Let _ _ _ _) = 5
   prec (If _ _ _)  = 5
   prec (Pair _ _)  = 11
 
@@ -161,10 +155,7 @@ instance Pretty Tm where
     (TyApp t1 t2) ->
       PP.sep [ppPrec q t1, PP.brackets (pp t2)]
     (Abs x mty t1) ->
-      let dmty = case mty of
-                  Nothing -> PP.empty
-                  Just ty -> PP.colon PP.<+> pp ty in
-      PP.hang (PP.char '\\' PP.<+> pp x PP.<+> dmty PP.<> PP.text ".")
+      PP.hang (PP.char '\\' PP.<+> pp x PP.<+> ppAnnot mty PP.<> PP.text ".")
             2 (ppPrec q t1)
     (TyAbs x t1) -> 
       PP.hang (PP.text "/\\" PP.<+> pp x PP.<> PP.text ".")
@@ -173,12 +164,15 @@ instance Pretty Tm where
       ppPrec q t1 PP.<> PP.text "." PP.<> PP.int i
     (Pair t1 t2) ->
       pp t1 PP.<> PP.text "," PP.<+> pp t2
-    (Let x t1 t2) ->
-      PP.hang (PP.text "let" PP.<+> pp x PP.<+> PP.text "="
+    (Let x mty t1 t2) ->
+      PP.hang (PP.text "let" PP.<+> pp x PP.<> ppAnnot mty PP.<+> PP.text "="
                PP.<+> pp t1 PP.<+> PP.text "in")
          2 (ppPrec q t2)
     (If t1 t2 t3) ->
       PP.sep [PP.text "if", pp t1, PP.text "then", pp t2, PP.text "else", pp t3]
+
+ppAnnot Nothing = PP.empty
+ppAnnot (Just ty) = PP.colon PP.<+> pp ty
 
 --------------------------------------------------------------------------
 
@@ -210,6 +204,11 @@ instance Output Type where
 product_i 1 t u = TyProduct t u
 product_i 2 t u = TyProduct u t
 
+fty :: [Int] -> Type -> Type
+fty [] ty     = ty
+fty (v:vs) ty = Roll (TyForall v (fty vs ty))
+
+
 ftyabs :: [Int] -> Tm -> Tm 
 ftyabs []     t = t
 ftyabs (v:vs) t = TyAbs v (ftyabs vs t)
@@ -218,9 +217,10 @@ ftyapp :: Tm -> [Type] -> Tm
 ftyapp t [] = t
 ftyapp t (v:vs) = ftyapp (TyApp t v) vs
 
+
 -- smart constructor for let
 flet x (Var y) u | x == y = u
-flet x t u = Let x t u
+flet x t u = Let x Nothing t u
 
 -- eta-reducing smart constructor for type abstraction
 ftyabs1 v (TyApp t (Roll (TyVar w))) | v == w = t
@@ -231,15 +231,15 @@ ftyabs1 v t = TyAbs v t
 -- The unifier
 
 
-type C = Co M Type Tm
+type C = Co Type Tm
 
-type Variable = Var M Ty
+type Variable = Var Ty
 
 -- For type annotations in the source language:
 -- Introduce an existential variable, defined to be equal
 -- to a given type.
 -- Any occurrence of TyEx creates an unconstrained variable
-existsTy :: Mu Ty -> (Variable -> M (Co M Type a)) -> M (Co M Type a)
+existsTy :: Mu Ty -> (Variable -> M (Co Type a)) -> M (Co Type a)
 existsTy (Roll ty) f =
   case ty of
     TyEx    -> exist_ f
@@ -270,7 +270,7 @@ hastype (Abs x Nothing u) tau = do
           exist (\ v2 -> do
                   c1 <- tau -==- TyArrow v1 v2
                   c2 <- hastype u v2
-                  return (c1 ^& def x v1 c2)))
+                  return (c1 ^& def x (trivial v1) c2)))
   return $ fmap (\ (tau1, (tau2, ((), u))) -> Abs x (Just tau1) u) c
   
 hastype (Abs x (Just t) u) tau = do
@@ -278,7 +278,7 @@ hastype (Abs x (Just t) u) tau = do
           exist (\ v2 -> do
                   c1 <- tau -==- TyArrow v1 v2
                   c2 <- hastype u v2
-                  return (pure t ^& c1 ^& def x v1 c2)))
+                  return (pure t ^& c1 ^& def x (trivial v1) c2)))
   return $ fmap (\ (tau1, (tau2, u)) -> Abs x (Just tau1) u) c
 
 hastype (App t1 t2) tau = do
@@ -288,13 +288,23 @@ hastype (App t1 t2) tau = do
                return $ c1 ^& c2)
   return $ fmap (\ (t1', t2') -> App t1' t2') c
 
-hastype (Let x t u) tau = do
-  -- construct a let constraint
+hastype (Let x Nothing t u) tau = do
+  -- construct a (recursive) let constraint
   cu <- hastype u tau
-  c  <- let1 x (hastype t) cu
-  return $ fmap (\ (a, t', (b, _), u') ->
-                  Let x (ftyabs a t') u') c
-  
+  c  <- let1 True x (hastype t) cu
+  return $ fmap (\ (a, t', (b, ty), u') ->
+                  Let x (Just (fty a ty)) (ftyabs a t') u') c
+
+-- recursive, non-generalizing (annotated) let
+hastype (Let x (Just ty) t u) tau = do
+  c <- existsTy ty (\v -> do
+                     cu  <- hastype u tau
+                     ct  <- hastype t v
+                     return (def x (trivial v) (cu ^& ct)))
+  return $ fmap (\ (u', t') ->
+                  Let x (Just ty) t' u') c
+
+
 hastype (Pair t1 t2) tau = do
   c <- exist_ (\ v1 ->
          exist_ (\ v2 -> do
@@ -330,7 +340,7 @@ constraints t = do
 
 translate t = do
   c3 <- constraints t
-  solve c3
+  solve False c3
 
 inf :: Tm -> IO Tm
 inf t = runSolverM (translate t)
@@ -340,22 +350,23 @@ inf t = runSolverM (translate t)
 
 abs x = Abs x Nothing
 
+
 ml1 = abs "x" (Var "x")
 
 ml2 = abs "f" (abs "x"
       (App (Var "f") (Var "x")))
 
-ml3 = Let "id" ml1
+ml3 = Let "id" Nothing ml1
        (Pair (App (Var "id") (Bool True))
         (App (Var "id") (Pair (Bool True) (Bool False))))
        
-ml4 = Let "id1" ml1
-      (Let "id2" ml2 
+ml4 = Let "id1" Nothing ml1
+      (Let "id2" Nothing  ml2 
        (Pair (App (Var "id1") (Bool True))
         (App (Var "id2") (Pair (Bool True) (Bool False)))))
 
-ml5 = Let "id1" ml1
-      (Let "id2" ml1 
+ml5 = Let "id1" Nothing ml1
+      (Let "id2" Nothing  ml1 
        (Pair (App (Var "id1") (Bool True))
         (App (Var "id2") (Pair (Bool True) (Bool False)))))
 
@@ -372,6 +383,7 @@ y =
 mlid =
   abs "x" x
 
+-- needs rectypes
 delta =
   abs "x" (App x x)
 
@@ -385,18 +397,31 @@ k =
   abs "x" (abs "y" x)
 
 genid =
-  Let "x" mlid x
+  Let "x" Nothing mlid x
 
 genidid =
-  Let "x" mlid (App x x)
+  Let "x" Nothing mlid (App x x)
 
 genkidid =
-  Let "x" (App k mlid) (App x mlid)
+  Let "x" Nothing (App k mlid) (App x mlid)
 
 genkidid2 =
-  Let "x" (App (App k mlid) mlid) x
+  Let "x" Nothing (App (App k mlid) mlid) x
 
 app_pair = -- ill-typed 
   App (Pair mlid mlid) mlid
 
 mlnot = abs "x" (If x (Bool False) (Bool True))
+
+reclet =
+  Let "f" Nothing (Abs "x" Nothing (App (Var "f") (Var "x"))) (Var "f")
+
+annlet =
+  Let "f" (Just (Roll (TyArrow (Roll TyBool) (Roll TyBool))))
+          (Abs "x" Nothing (App (Var "f") (Var "x")))
+      (App (Var "f") (Bool True))
+
+annlet2 =
+  Let "f" (Just (Roll (TyArrow (Roll TyEx) (Roll TyEx))))
+          (Abs "x" Nothing (App (Var "f") (Var "x")))
+      (App (Var "f") (Bool True))
