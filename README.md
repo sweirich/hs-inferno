@@ -1,6 +1,8 @@
 A port of Francois Pottier's inferno library from OCaml to Haskell.
 
-See the [paper](http://gallium.inria.fr/~fpottier/biblio/pottier_abstracts.html#pottier-elaboration-13) for more information.
+See the
+[paper](http://gallium.inria.fr/~fpottier/biblio/pottier_abstracts.html#pottier-elaboration-13)
+for more information.
 
 This translation to the world's finest imperative programming language is (so
 far) fairly faithful. 
@@ -9,10 +11,13 @@ An example for core ML is in the file [test/Client.hs](test/Client.hs). This
 file uses the library to implement a type inferencer as described in the
 paper.
 
-A slightly different example [test/G.hs](test/G.hs) elaborates a language with optional type annotations to itself. It is called G because that is the letter after F.
+A slightly different example [test/G.hs](test/G.hs) elaborates a language with
+optional type annotations to itself. It is called G because that is the letter
+after F.
 
 The interface to the library is contained in
-[SolverM.hs](Language/Inferno/SolverM.hs).  The requirements of the
+[UnifierSig.hs](Language/Inferno/Unifier.hs) and 
+[Solver.hs](Language/Inferno/Solver.hs).  The requirements of the
 object language types are fairly small:
 
 * The most important part of this interface is that it requires the definition
@@ -31,32 +36,38 @@ Observations
   imperative than is ideomatic.
   
   
-* One place this was a bit ridiculuous was the treatment of fresh variable 
+* One place this was a bit ridiculous was the treatment of fresh variable 
   generation.  The ML library can encapsulate a counter in a module, and
   generate fresh variables based on that "global" state. 
   
   The Haskell version avoids the easy `unsafePerformIO` solution and instead
   defines a freshness monad. That monad constraint means that the state can be
-  passed around, marking where fresh variables are necessary. But that
-  freshness monad comes with its own problems: it cannot be ST or IO.  As a
-  result, the library is generic about what form of references it uses.
-  
+  passed around, marking where fresh variables are necessary.
+
+* For a while, the monad that the library worked with was truly generic. i.e. 
+  as long as it supported Freshness, References and Arrays. That means that
+  this code would work in either ST or IO. But this generic version has a
+  steep price, not only are the type signatures terribly complicated, but I was
+  unable to find a generic implementation of hashtables.
+
+  Therefore, the file SolverM.hs defines exactly the monad that we need, based
+  on IO. All of the files in the Language/Inferno/M/ subdirectory are
+  specialized to this Monad. It could be changed to ST by editing SolverM.hs.  
+
 * Haskell's lack of functors means that I had to resort to type
   parameterization throughout the library. That means that the interface types
-  of the solver are quite hideous.  Insead of 
+  of the solver are parameterized by the input and output types.
+  Insead of 
   
         exist :: (Variable -> Co a) -> Co (t, a)
   
-  I had to index unification variables by `m` the monad that stores their
-  state, (and can generate fresh ones when needed) and `s` the shallow
-  structure that we need for unification. As coercions are about variables,
-  that type is also parameterized by those two types.
+  we have:
   
-        exist :: forall m t a. (MonadFresh m, MonadRef m, Traversable (Src t)) =>
-         (Var m (Src t) -> m (Co m t a)) -> m (Co m t (t,a))
+        exist :: forall t a. (Output t) =>
+         (Var (Src t) -> M (Co t a)) -> M (Co t (t,a))
   
   I used type families instead of functional dependencies, so at least this
-  function has 3 type arguments instead of 5.
+  function has 2 type arguments instead of 3.
 
 * Bugs in the example code are very hard to debug! I spent much time trying to
   track down an error in my ZipM instance.
@@ -66,7 +77,7 @@ TODO
   - Replace `VarMap` with a more efficient data structure. Unfortunately, the
     Haskell implementation for Hashtables is not generic over the IO / ST monad
 	 so it looks like I should just commit to one or the other. That will have the
-	 benefit of simplifying *many* of the types.
+	 benefit of simplifying *many* of the types.  DONE!
   
   - Break out parts such as `TRef`, `MonadEqRef`, `TUnionFind`, and
     `MonadFresh` into a separate project.
@@ -76,16 +87,11 @@ TODO
 
 (Planned) Extensions
 ------------------------
-- type annotations (done)
+- monomorphic type annotations (done)
+- recursive lets (done)
 - polymorphic recursion
 - type classes
 - GADTs
 - kinds
 - higher-rank polymorphism
 
-Library Overview
-----------------
-
-SolverHi.hs
-
-SolverLo.hs
