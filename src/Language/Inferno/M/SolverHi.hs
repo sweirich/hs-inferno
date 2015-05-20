@@ -168,13 +168,12 @@ data Letn t a b  =
 
 
 letn :: (Output t) =>
-        Bool            -- recursive?
-        -> [TermVar]
+        [TermVar]
         -> ([Var (Src t)] -> M (Co t a))
         -> Co t b
         -> M (Co t (Letn t a b))
 
-letn b xs f1 (Co rc2 k2) = do
+letn xs f1 (Co rc2 k2) = do
   -- For each term variable [x], create a fresh type variable [v], as in
   -- [CExist]. Also, create an uninitialized scheme hook, which will receive
   -- the type scheme of [x] after the solver runs. 
@@ -191,7 +190,7 @@ letn b xs f1 (Co rc2 k2) = do
   -- all generalizable variables in the left-hand side.
   generalizable_hook <- newRef Nothing
 
-  let raw_co = (Lo.CLet b generalizable_hook rc1 xvss rc2) 
+  let raw_co = (Lo.CLet generalizable_hook rc1 xvss rc2) 
   
   -- Build a CLet constraint
   return $ Co raw_co
@@ -208,15 +207,13 @@ letn b xs f1 (Co rc2 k2) = do
         b <- k2 env
         return (Letn generalizable a ss b))
 {-
-let1 :: (Output t) =>
-        Bool
-        -> TermVar
+let1 :: (Output t) => TermVar
         -> (Var (Src t) -> M (Co t a))
         -> Co t b
         -> M (Co t ([Int], a, ([Int],t), b))
 -}
-let1 b x f1 c2 = do
-  c <- letn b [ x ] (\ [x] -> f1 x) c2
+let1 x f1 c2 = do
+  c <- letn [ x ] (\ [x] -> f1 x) c2
   return $ fmap
     (\(Letn generalizable v1 [ss] v2) ->
                (generalizable, v1, ss, v2)) c
@@ -227,7 +224,7 @@ let0 :: (Output t) =>
         M (Co t ([Int], a))
 -}
 let0 c1 = do
-  letn False [] (\ _ -> return c1) (pure ())
+  letn [] (\ _ -> return c1) (pure ())
     <$$>
     (\ (Letn generalizable v1 _ ()) ->
           (generalizable, v1))

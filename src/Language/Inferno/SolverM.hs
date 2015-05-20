@@ -35,10 +35,6 @@ import Data.Array.IO
 
 import Data.IORef
 
---import Language.Inferno.SolverHi hiding (solve)
---import qualified Language.Inferno.SolverHi as Hi
---import qualified Language.Inferno.SolverLo as Lo
-
 type RepArray = IOArray
 
 newtype M a = SolverM (StateT Int IO a)

@@ -15,8 +15,35 @@ import Text.PrettyPrint (Doc)
 import qualified Text.PrettyPrint as PP
 
 
-class (Monad m) => MonadFresh m where
-  fresh :: m Int
+-- Systems that use this library must declare types that are instances of the
+-- following two classes.
+
+
+-- This class specifies the output type of the unifier (i.e. the object
+-- language types that the elaborator should produce) as well as the
+-- associated "shallow" type structure of the input types.
+
+class (Typeable t,
+       Show t,
+       ZipM (Src t), 
+       Traversable (Src t)) => Output t where
+  type Src t :: * -> *
+  tovar      :: Int -> t
+  struc      :: (Src t) t -> t
+
+
+-- There must be some way to compare "shallow" types for the
+-- same structure  
+class (Typeable t, Traversable t, Foldable t) => ZipM t where
+  zipM  :: (Typeable a, Show a, MonadThrow m) =>
+      (a -> a -> m b) -> t a -> t a -> m (t b)
+      
+  zipM_ :: (Typeable a, Show a, MonadThrow m) =>
+      (a -> a -> m ()) -> t a -> t a -> m ()
+
+
+
+
 
 
 -- What ever type structure we use must be an instance
@@ -26,12 +53,6 @@ data ZipError a = ZipError a a
             
 instance (Show a, Typeable a) => Exception (ZipError a)
 
-class (Typeable t, Traversable t, Foldable t) => ZipM t where
-  zipM  :: (Typeable a, Show a, MonadThrow m) =>
-      (a -> a -> m b) -> t a -> t a -> m (t b)
-      
-  zipM_ :: (Typeable a, Show a, MonadThrow m) =>
-      (a -> a -> m ()) -> t a -> t a -> m ()
 
 {-
 -- From Conor's email
@@ -53,6 +74,9 @@ class Functor f => HalfZippable f where
 
 -}    
 
+class (Monad m) => MonadFresh m where
+  fresh :: m Int
+
 
 class Pretty a where
   ppPrec :: Int -> a -> Doc
@@ -66,12 +90,3 @@ class Pretty a where
   pp     :: a -> Doc
   pp     = ppPrec 11
 
--- The output of the unifier must be an instance of this class.
--- TODO: rename these members
-class (Typeable t,
-       Show t,
-       ZipM (Src t), 
-       Traversable (Src t)) => Output t where
-  type Src t :: * -> *
-  tovar  :: Int -> t
-  struc  :: (Src t) t -> t

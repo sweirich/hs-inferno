@@ -34,19 +34,21 @@ type TermVar = String
 -- type schemes
 type Scheme s = G.Scheme s
 
--- type variables
+-- type variables, these come directly from the unifier
 type Var s = U.Variable s
  
+-- Raw coercions handled by the solver. The type parameter s is for the
+-- shallow type structure of the program
 
 data RawCo s =
     CTrue
   | CConj (RawCo s) (RawCo s)
   | CEq (Var s) (Var s)
   | CExist (Var s) (RawCo s)
+--  | CAll (Var s) (RawCo s)
   | CInstance TermVar (Var s) (Ref M [Var s])
   | CDef TermVar (Scheme s) (RawCo s)
-  | CLet Bool -- recursive let?
-         (Ref M (Maybe [Var s]))
+  | CLet (Ref M (Maybe [Var s]))
            -- ^ variables to generalize
          (RawCo s)
            -- ^ constraint from RHSs
@@ -65,10 +67,10 @@ instance (Show (RawCo s)) where
   -- TODO: add quantifiers
   show (CDef x v c)      = "(def" ++ x ++ "=" ++ show (U.getId (G.body v))
                            ++ " in " ++ show c ++ ")"
-  show (CLet _ _ c1 [] c2) = "let0 " ++ show c1 ++ " in " ++ show c2
-  show (CLet _ _ c1 [(x,v,_)] c2) =
+  show (CLet _ c1 [] c2) = "let0 " ++ show c1 ++ " in " ++ show c2
+  show (CLet _ c1 [(x,v,_)] c2) =
     "let1 " ++ x  ++ "= \\" ++ show (U.getId v) ++ "." ++ show c1 ++ " in " ++ show c2
-  show (CLet _ _ c1 _ c2) = "letn " ++ show c1 ++ " in " ++ show c2
+  show (CLet _ c1 _ c2) = "letn " ++ show c1 ++ " in " ++ show c2
 
 data Err s =
     Unbound TermVar
@@ -126,15 +128,11 @@ solve rectypes c = do
               U.unify v w
          CDef x s c ->
            solve_internal c (Map.insert x s env)
-         CLet is_rec generalizable_hook c1 xvss c2 -> do
+         CLet generalizable_hook c1 xvss c2 -> do
            G.enter state
            let vs = map (\ (_,v,_) -> v) xvss               
            forM_ vs (G.register state)
-           -- recursive let
-           let env2 = if is_rec then
-                         foldr (\ (x,v,_) -> Map.insert x (G.trivial v)) env xvss
-                      else env
-           solve_internal c1 env2
+           solve_internal c1 env
            (generalizable, ss) <- G.exit rectypes state vs
            env' <- foldM (\ env1 ((x,_,scheme_hook), s) -> do
                                           writeRef scheme_hook (Just s)

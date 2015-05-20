@@ -16,8 +16,8 @@ optional type annotations to itself. It is called G because that is the letter
 after F.
 
 The interface to the library is contained in
-[UnifierSig.hs](Language/Inferno/Unifier.hs) and 
-[Solver.hs](Language/Inferno/Solver.hs).  The requirements of the
+[UnifierSig.hs](src/Language/Inferno/UnifierSig.hs) and 
+[Solver.hs](src/Language/Inferno/Solver.hs).  The requirements of the
 object language types are fairly small:
 
 * The most important part of this interface is that it requires the definition
@@ -33,7 +33,7 @@ Observations
 ------------
 * I tried very hard to make the most literal translation that I could from
   OCaml to Haskell. This means that the Haskell code is more
-  imperative than is ideomatic.
+  imperative than is idiomatic.
   
   
 * One place this was a bit ridiculous was the treatment of fresh variable 
@@ -51,7 +51,7 @@ Observations
   unable to find a generic implementation of hashtables.
 
   Therefore, the file SolverM.hs defines exactly the monad that we need, based
-  on IO. All of the files in the Language/Inferno/M/ subdirectory are
+  on IO. All of the files in the [M](src/Language/Inferno/M/) subdirectory are
   specialized to this Monad. It could be changed to ST by editing SolverM.hs.  
 
 * Haskell's lack of functors means that I had to resort to type
@@ -74,10 +74,6 @@ Observations
 
 TODO
 ----
-  - Replace `VarMap` with a more efficient data structure. Unfortunately, the
-    Haskell implementation for Hashtables is not generic over the IO / ST monad
-	 so it looks like I should just commit to one or the other. That will have the
-	 benefit of simplifying *many* of the types.  DONE!
   
   - Break out parts such as `TRef`, `MonadEqRef`, `TUnionFind`, and
     `MonadFresh` into a separate project.
@@ -88,7 +84,8 @@ TODO
 (Planned) Extensions
 ------------------------
 - monomorphic type annotations (done)
-- recursive lets (done)
+- recursive lets (need to be done)
+- mixed-prefix unification
 - polymorphic recursion
 - type classes
 - GADTs

@@ -53,6 +53,7 @@ data Tm  =
   | Proj Int Tm 
   | Bool Bool
   | If Tm Tm Tm
+  | Fix TermVar Tm
     deriving (Eq, Show)
 
 ---------------------------------
@@ -139,6 +140,7 @@ instance Pretty Tm where
   prec (App _ _)   = 3
   prec (TyApp _ _) = 3
   prec (Abs _ _ _) = 5
+  prec (Fix _ _)   = 5
   prec (TyAbs _ _) = 5
   prec (Proj _ _)  = 5
   prec (Let _ _ _ _) = 5
@@ -170,6 +172,8 @@ instance Pretty Tm where
          2 (ppPrec q t2)
     (If t1 t2 t3) ->
       PP.sep [PP.text "if", pp t1, PP.text "then", pp t2, PP.text "else", pp t3]
+    (Fix x tm) ->
+      PP.sep [PP.text "fix", pp x, PP.text ".", pp tm]
 
 ppAnnot Nothing = PP.empty
 ppAnnot (Just ty) = PP.colon PP.<+> pp ty
@@ -281,6 +285,7 @@ hastype (Abs x (Just t) u) tau = do
                   return (pure t ^& c1 ^& def x (trivial v1) c2)))
   return $ fmap (\ (tau1, (tau2, u)) -> Abs x (Just tau1) u) c
 
+
 hastype (App t1 t2) tau = do
   c <- exist_ (\v -> do
                c1 <- liftS hastype t1 (TyArrow v tau)
@@ -289,11 +294,14 @@ hastype (App t1 t2) tau = do
   return $ fmap (\ (t1', t2') -> App t1' t2') c
 
 hastype (Let x Nothing t u) tau = do
-  -- construct a (recursive) let constraint
+  let fixt tau = exist_ (\alpha -> do                         
+        c1 <- hastype t alpha
+        c2 <- return $ alpha -=- tau
+        return (c2 ^^ def x (trivial alpha) c1))
   cu <- hastype u tau
-  c  <- let1 True x (hastype t) cu
-  return $ fmap (\ (a, t', (b, ty), u') ->
-                  Let x (Just (fty a ty)) (ftyabs a t') u') c
+  c  <- let1 x fixt cu
+  return $ fmap (\ (a, t', (b, s), u') ->
+                  Let x (Just (fty a s)) (ftyabs a t') u') c
 
 -- recursive, non-generalizing (annotated) let
 hastype (Let x (Just ty) t u) tau = do
@@ -342,8 +350,10 @@ translate t = do
   c3 <- constraints t
   solve False c3
 
-inf :: Tm -> IO Tm
-inf t = runSolverM (translate t)
+inf :: Tm -> IO ()
+inf t = do
+  tm <- runSolverM (translate t)
+  putStrLn (show (pp tm))
 
 
 --------------------------------------------------------------------------
